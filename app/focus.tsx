@@ -28,7 +28,7 @@ export default function Focus() {
   const store = useStore();
   const active = store.active;
   const reduced = useReducedMotion();
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   const finished = useRef(false);
 
   const remaining = active ? active.endsAt - now : 0;

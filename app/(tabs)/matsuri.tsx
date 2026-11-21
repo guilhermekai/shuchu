@@ -132,7 +132,7 @@ export default function Matsuri() {
           </Panel>
         ) : (
           <>
-            <T v="title3" style={{ marginTop: space.xs }}>Tonight's guests</T>
+            <T v="title3" style={{ marginTop: space.xs }}>Tonight’s guests</T>
             {[...today].reverse().map((x) => (
               <View key={x.id} style={[styles.row, { backgroundColor: t.surface, borderColor: t.border }]}>
                 <View style={[styles.rowAvatar, { backgroundColor: t.accentSoft }]}>

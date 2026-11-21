@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { SHOP, SLOTS, type ShopItem, type Slot } from '../../src/data/shop';
+import { SHOP, SLOTS, type Slot } from '../../src/data/shop';
 import { heroById } from '../../src/data/characters';
 import { HeroSprite } from '../../src/chibi/HeroSprite';
 import { ItemIcon } from '../../src/chibi/ItemIcon';
@@ -18,7 +18,8 @@ export default function Shop() {
   const [slot, setSlot] = useState<Slot>('head');
   const [previewId, setPreviewId] = useState<string | null>(null);
   const hero = heroById(store.heroId);
-  const mine = store.equipped[store.heroId] ?? {};
+  const saved = store.equipped[store.heroId];
+  const mine = useMemo(() => saved ?? {}, [saved]);
   const items = SHOP.filter((i) => i.slot === slot);
   const preview = SHOP.find((i) => i.id === previewId) ?? null;
   const cardW = (width - space.md * 2 - space.sm * 2) / 3;

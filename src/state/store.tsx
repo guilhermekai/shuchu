@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
 import { heroById, type HeroId } from '../data/characters';
 import { itemById, type Slot } from '../data/shop';
 import type { SceneId } from '../data/scenes';
@@ -191,8 +191,11 @@ const Ctx = createContext<Store | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL);
+  // Latest state for callbacks (complete/buy) without re-creating them on every change.
   const stateRef = useRef(state);
-  stateRef.current = state;
+  useLayoutEffect(() => {
+    stateRef.current = state;
+  });
 
   useEffect(() => {
     AsyncStorage.getItem(PERSIST_KEY)

@@ -81,15 +81,15 @@ export default function FocusSetup() {
                 <HeroSprite heroId={store.heroId} mode="idle" size={heroSize} />
               </View>
               <View style={[styles.stageTag, { backgroundColor: scene.dark ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.85)' }]}>
-                <T v="footnote" color={scene.dark ? '#FFF' : t.text} style={{ fontWeight: '600' }}>{hero.name}</T>
-                <JP size={11} color={scene.dark ? '#FFFFFFAA' : t.textSecondary}>{hero.archetypeJp}</JP>
+                <T v="footnote" color={scene.dark ? '#FFFFFF' : '#1B1A1F'} style={{ fontWeight: '600' }}>{hero.name}</T>
+                <JP size={11} color={scene.dark ? '#FFFFFFAA' : '#5E5B66'}>{hero.archetypeJp}</JP>
               </View>
             </Scenery>
           </PressableScale>
         </Panel>
 
         {/* Task */}
-        <T v="headline" style={styles.label}>Today's mission</T>
+        <T v="headline" style={styles.label}>Today’s mission</T>
         <TextInput
           value={task}
           onChangeText={setTask}

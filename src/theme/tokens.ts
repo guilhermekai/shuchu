@@ -63,7 +63,7 @@ export const dark: Theme = {
   textSecondary: palette.nightInkSoft,
   textTertiary: palette.nightInkFaint,
   border: palette.nightHairline,
-  panelStroke: palette.nightInk,
+  panelStroke: '#4B4560', // softer ink on night paper: a white offset shadow glares
   accent: '#FF6A5C',
   accentSoft: 'rgba(255,106,92,0.16)',
   sakura: palette.sakura,
