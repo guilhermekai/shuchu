@@ -4,7 +4,7 @@
  * Constant motion → linear easing. Paused = hold position (no snap back).
  */
 import { useEffect, type ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, useColorScheme, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   cancelAnimation,
@@ -28,12 +28,15 @@ export function Scenery({ sceneId, width, height, moving, speed = 1, children }:
   const scene = sceneById(sceneId);
   const scale = height / TH;
   const L = SCENE_LAYERS[sceneId];
+  const dimmed = useColorScheme() === 'dark' && !scene.dark;
   return (
     <View style={{ width, height, overflow: 'hidden' }}>
       <LinearGradient colors={scene.sky} style={StyleSheet.absoluteFill} />
-      <Layer moving={moving} duration={40000 / speed} scale={scale}>{L.far}</Layer>
-      <Layer moving={moving} duration={16000 / speed} scale={scale}>{L.mid}</Layer>
-      <Layer moving={moving} duration={6000 / speed} scale={scale}>{L.near}</Layer>
+      <Layer moving={moving} duration={40000 / speed} scale={scale} width={width}>{L.far}</Layer>
+      <Layer moving={moving} duration={16000 / speed} scale={scale} width={width}>{L.mid}</Layer>
+      <Layer moving={moving} duration={6000 / speed} scale={scale} width={width}>{L.near}</Layer>
+      {/* Daytime scenes glare in dark mode: dim them a little. */}
+      {dimmed && <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(10,8,20,0.18)' }]} pointerEvents="none" />}
       {sceneId === 'sakura' && <Petals count={14} width={width} height={height} />}
       {sceneId === 'neon' && <Petals count={10} width={width} height={height} variant="rain" />}
       {children}
@@ -41,8 +44,10 @@ export function Scenery({ sceneId, width, height, moving, speed = 1, children }:
   );
 }
 
-function Layer({ moving, duration, scale, children }: { moving: boolean; duration: number; scale: number; children: (i: number) => ReactNode }) {
+function Layer({ moving, duration, scale, width, children }: { moving: boolean; duration: number; scale: number; width: number; children: (i: number) => ReactNode }) {
   const tilePx = TW * scale;
+  // Enough tiles to cover the view even after scrolling one tile left.
+  const tiles = Math.ceil(width / tilePx) + 1;
   const x = useSharedValue(0);
   const reduced = useReducedMotion();
 
@@ -69,8 +74,8 @@ function Layer({ moving, duration, scale, children }: { moving: boolean; duratio
   const style = useAnimatedStyle(() => ({ transform: [{ translateX: x.get() }] }));
 
   return (
-    <Animated.View style={[StyleSheet.absoluteFill, { flexDirection: 'row', width: tilePx * 3 }, style]} pointerEvents="none">
-      {[0, 1, 2].map((i) => (
+    <Animated.View style={[StyleSheet.absoluteFill, { flexDirection: 'row', width: tilePx * tiles }, style]} pointerEvents="none">
+      {Array.from({ length: tiles }, (_, i) => (
         <Svg key={i} width={tilePx} height={TH * scale} viewBox={`0 0 ${TW} ${TH}`}>
           {children(i)}
         </Svg>
@@ -119,7 +124,7 @@ const SCENE_LAYERS: Record<SceneId, Layers> = {
           <Rect x="306" y="140" width="28" height="14" rx="4" fill="#3A3A48" />
           <Rect x="310" y="143" width="20" height="8" rx="2" fill="#FFF3C4" />
         </G>
-        <SakuraTree x={370} y={232} s={0.85} />
+        <SakuraTree x={350} y={232} s={0.8} />
       </G>
     ),
     near: () => (

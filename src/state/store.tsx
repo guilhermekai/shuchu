@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
-import { heroById, type HeroId } from '../data/characters';
+import { HEROES, heroById, type HeroId } from '../data/characters';
 import { itemById, type Slot } from '../data/shop';
 import type { SceneId } from '../data/scenes';
+import type { LangSetting } from '../i18n';
 
 export type Session = {
   id: string;
@@ -25,6 +26,8 @@ export type ActiveSession = {
 
 type State = {
   hydrated: boolean;
+  /** False when saved data failed to load; saving is then disabled. */
+  persistent: boolean;
   onigiri: number;
   heroId: HeroId;
   ownedHeroes: HeroId[];
@@ -34,10 +37,13 @@ type State = {
   active: ActiveSession | null;
   sceneId: SceneId;
   minutes: number;
+  lang: LangSetting;
+  introSeen: boolean;
 };
 
 const INITIAL: State = {
   hydrated: false,
+  persistent: false,
   onigiri: 20,
   heroId: 'haru',
   ownedHeroes: ['haru', 'kaze'],
@@ -47,16 +53,20 @@ const INITIAL: State = {
   active: null,
   sceneId: 'sakura',
   minutes: 25,
+  lang: 'system',
+  introSeen: false,
 };
 
 type Action =
-  | { type: 'hydrate'; state: Partial<State> }
+  | { type: 'hydrate'; state: Partial<State>; persist?: boolean }
   | { type: 'selectHero'; heroId: HeroId }
   | { type: 'buyHero'; heroId: HeroId }
   | { type: 'buyItem'; itemId: string }
   | { type: 'toggleEquip'; itemId: string }
   | { type: 'setScene'; sceneId: SceneId }
   | { type: 'setMinutes'; minutes: number }
+  | { type: 'setLang'; lang: LangSetting }
+  | { type: 'dismissIntro' }
   | { type: 'start'; task: string; now: number }
   | { type: 'abandon' }
   | { type: 'fastForward'; now: number }
@@ -65,7 +75,7 @@ type Action =
 function reducer(s: State, a: Action): State {
   switch (a.type) {
     case 'hydrate':
-      return { ...s, ...a.state, hydrated: true };
+      return { ...s, ...a.state, hydrated: true, persistent: a.persist !== false };
     case 'selectHero':
       return s.ownedHeroes.includes(a.heroId) ? { ...s, heroId: a.heroId } : s;
     case 'buyHero': {
@@ -96,6 +106,10 @@ function reducer(s: State, a: Action): State {
       return { ...s, sceneId: a.sceneId };
     case 'setMinutes':
       return { ...s, minutes: a.minutes };
+    case 'setLang':
+      return { ...s, lang: a.lang };
+    case 'dismissIntro':
+      return { ...s, introSeen: true };
     case 'start':
       return {
         ...s,
@@ -168,6 +182,8 @@ type Store = State & {
   toggleEquip: (id: string) => void;
   setScene: (id: SceneId) => void;
   setMinutes: (m: number) => void;
+  setLang: (lang: LangSetting) => void;
+  dismissIntro: () => void;
   start: (task: string) => void;
   abandon: () => void;
   fastForward: () => void;
@@ -193,19 +209,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL);
   // Latest state for callbacks (complete/buy) without re-creating them on every change.
   const stateRef = useRef(state);
+  const completedRef = useRef<number | null>(null);
   useLayoutEffect(() => {
     stateRef.current = state;
   });
 
   useEffect(() => {
     AsyncStorage.getItem(PERSIST_KEY)
-      .then((raw) => dispatch({ type: 'hydrate', state: raw ? JSON.parse(raw) : {} }))
-      .catch(() => dispatch({ type: 'hydrate', state: {} }));
+      .then((raw) => dispatch({ type: 'hydrate', state: sanitize(raw ? JSON.parse(raw) : {}) }))
+      // If the saved data can't be read, run in memory with saving turned off, so the
+      // starting state never overwrites real progress.
+      .catch(() => dispatch({ type: 'hydrate', state: {}, persist: false }));
   }, []);
 
   useEffect(() => {
-    if (!state.hydrated) return;
-    const { hydrated, ...rest } = state;
+    if (!state.hydrated || !state.persistent) return;
+    const { hydrated, persistent, ...rest } = state;
     AsyncStorage.setItem(PERSIST_KEY, JSON.stringify(rest)).catch(() => {});
   }, [state]);
 
@@ -213,7 +232,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const s = stateRef.current;
     const a = s.active;
     if (!a) return null;
-    const now = Date.now();
+    if (completedRef.current === a.startedAt) return null; // already completed this one
+    completedRef.current = a.startedAt;
+    // A timer that ran out while the app was closed counts on the day it ended.
+    const now = Math.min(Date.now(), a.endsAt);
     const prior = s.sessions.length;
     const { arc, episode } = arcOf(prior);
     const arcCleared = episode === EPISODES_PER_ARC;
@@ -251,6 +273,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       toggleEquip: (itemId) => dispatch({ type: 'toggleEquip', itemId }),
       setScene: (sceneId) => dispatch({ type: 'setScene', sceneId }),
       setMinutes: (minutes) => dispatch({ type: 'setMinutes', minutes }),
+      setLang: (lang) => dispatch({ type: 'setLang', lang }),
+      dismissIntro: () => dispatch({ type: 'dismissIntro' }),
       start: (task) => dispatch({ type: 'start', task, now: Date.now() }),
       abandon: () => dispatch({ type: 'abandon' }),
       fastForward: () => dispatch({ type: 'fastForward', now: Date.now() }),
@@ -268,7 +292,22 @@ export function useStore() {
   return v;
 }
 
+const NONE: Partial<Record<Slot, string>> = Object.freeze({});
+
+/** Stable empty object when nothing is equipped, so memoized sprites don't re-render. */
 export function useEquipped(heroId: HeroId) {
   const { equipped } = useStore();
-  return equipped[heroId] ?? {};
+  return equipped[heroId] ?? NONE;
+}
+
+/** Drop saved values that no longer match the current content (renamed heroes, items, scenes). */
+function sanitize(saved: Partial<State>): Partial<State> {
+  const out = { ...saved };
+  const heroIds = new Set(HEROES.map((h) => h.id));
+  if (out.heroId && !heroIds.has(out.heroId)) delete out.heroId;
+  if (out.ownedHeroes) out.ownedHeroes = out.ownedHeroes.filter((id) => heroIds.has(id));
+  if (out.sessions) out.sessions = out.sessions.filter((x) => heroIds.has(x.heroId));
+  if (out.active && !heroIds.has(out.active.heroId)) out.active = null;
+  if (out.ownedItems) out.ownedItems = out.ownedItems.filter((id) => itemById(id));
+  return out;
 }

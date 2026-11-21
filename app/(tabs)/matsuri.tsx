@@ -17,11 +17,12 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import Svg, { Circle, Ellipse, G, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../../src/lib/haptics';
 import { heroById } from '../../src/data/characters';
 import { HeroSprite } from '../../src/chibi/HeroSprite';
 import { Button, JP, Panel, PressableScale, T } from '../../src/components/ui';
 import { todaysSessions, useStore, type Session } from '../../src/state/store';
+import { useI18n } from '../../src/i18n';
 import { motion, radius, space, useTheme } from '../../src/theme/tokens';
 
 const VW = 800; // festival width in units
@@ -32,12 +33,15 @@ export default function Matsuri() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const store = useStore();
+  const i18n = useI18n();
+  const L = i18n.t.matsuri;
   const today = todaysSessions(store.sessions);
   const [picked, setPicked] = useState<string | null>(null);
   const pan = useRef<ScrollViewInstance>(null);
 
-  const sceneH = 440;
-  const s = sceneH / VH;
+  // Fill the width on wide screens instead of leaving an empty strip.
+  const s = Math.max(440 / VH, width / VW);
+  const sceneH = VH * s;
   const sceneW = VW * s;
 
   // One spot per guest; a hero who finished twice shows up once with a count.
@@ -53,7 +57,9 @@ export default function Matsuri() {
   const totalMin = today.reduce((a, x) => a + x.minutes, 0);
 
   return (
-    <ScrollView style={{ backgroundColor: t.bg }} contentContainerStyle={{ paddingBottom: insets.bottom + space.xxl }}>
+    // Full-bleed night sky under the status bar, so this tab manages its own insets.
+    // The bottom pad clears the tab bar on every platform (iOS draws it over content here).
+    <ScrollView style={{ backgroundColor: t.bg }} contentContainerStyle={{ paddingBottom: insets.bottom + 96 }} contentInsetAdjustmentBehavior="never">
       <View style={{ height: sceneH + insets.top }}>
         <LinearGradient colors={['#0B0820', '#22143F', '#3A1E4F']} style={StyleSheet.absoluteFill} />
         <ScrollView
@@ -82,9 +88,9 @@ export default function Matsuri() {
                     Haptics.selectionAsync();
                     setPicked(picked === g.heroId ? null : g.heroId);
                   }}
-                  style={{ position: 'absolute', left: x - size / 2, top: (428 - (i % 2) * 16) * s - size * (160 / 120), zIndex: 10 + (i % 2 ? 0 : 1) }}
+                  containerStyle={{ position: 'absolute', left: x - size / 2, top: (428 - (i % 2) * 16) * s - size * (160 / 120), zIndex: 10 + (i % 2 ? 0 : 1) }}
                   accessibilityRole="button"
-                  accessibilityLabel={`${heroById(g.heroId).name}, ${g.list.length} session${g.list.length > 1 ? 's' : ''}`}
+                  accessibilityLabel={L.sessionsA11y(heroById(g.heroId).name, g.list.length)}
                 >
                   <HeroSprite heroId={g.heroId} size={size} mode={g.heroId === newest ? 'cheer' : 'idle'} offset={i * 0.21} />
                   <View style={[styles.nameTag, { borderColor: picked === g.heroId ? '#FFD27A' : 'transparent' }]}>
@@ -97,11 +103,13 @@ export default function Matsuri() {
           </View>
         </ScrollView>
 
+        {/* Scrim keeps the title and subtitle readable over the lantern string */}
+        <LinearGradient colors={['rgba(11,8,32,0.92)', 'rgba(11,8,32,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: insets.top + 120 }} pointerEvents="none" />
         <View style={[styles.overlay, { top: insets.top + space.xs }]} pointerEvents="none">
           <JP size={13} color="#FFB0C4">夏祭り</JP>
           <T v="largeTitle" color="#FFFFFF">Matsuri</T>
           <T v="footnote" color="#FFFFFFB3">
-            {guests.length === 0 ? 'The festival opens after your first mission.' : `${guests.length} hero${guests.length > 1 ? 'es' : ''} celebrating · ${totalMin} min focused today`}
+            {guests.length === 0 ? L.closed : L.celebrating(guests.length, totalMin)}
           </T>
         </View>
       </View>
@@ -111,7 +119,7 @@ export default function Matsuri() {
           <Animated.View key={pickedGuest.heroId} entering={FadeIn.duration(180).easing(motion.easeOut)}>
             <Panel tone="accent">
               <View style={{ padding: space.md, gap: 2 }}>
-                <T v="headline">{heroById(pickedGuest.heroId).name} finished {pickedGuest.list.length} mission{pickedGuest.list.length > 1 ? 's' : ''}</T>
+                <T v="headline">{L.finished(heroById(pickedGuest.heroId).name, pickedGuest.list.length)}</T>
                 {pickedGuest.list.map((x) => (
                   <T key={x.id} v="footnote" color="secondary">
                     {x.task} · {x.minutes} min · +{x.reward} onigiri
@@ -125,14 +133,14 @@ export default function Matsuri() {
         {guests.length === 0 ? (
           <Panel>
             <View style={{ padding: space.lg, gap: space.sm, alignItems: 'flex-start' }}>
-              <T v="headline">No guests yet tonight</T>
-              <T v="subhead" color="secondary">Every hero who completes a focus session today comes to the festival.</T>
-              <Button label="Start a session" onPress={() => router.navigate('/')} style={{ alignSelf: 'stretch', marginTop: space.xs }} />
+              <T v="headline">{L.emptyTitle}</T>
+              <T v="subhead" color="secondary">{L.emptyBody}</T>
+              <Button label={L.start} onPress={() => router.navigate('/')} style={{ alignSelf: 'stretch', marginTop: space.xs }} />
             </View>
           </Panel>
         ) : (
           <>
-            <T v="title3" style={{ marginTop: space.xs }}>Tonight’s guests</T>
+            <T v="title3" style={{ marginTop: space.xs }}>{L.guests}</T>
             {[...today].reverse().map((x) => (
               <View key={x.id} style={[styles.row, { backgroundColor: t.surface, borderColor: t.border }]}>
                 <View style={[styles.rowAvatar, { backgroundColor: t.accentSoft }]}>
@@ -141,7 +149,7 @@ export default function Matsuri() {
                 <View style={{ flex: 1 }}>
                   <T v="subhead" style={{ fontWeight: '600' }} numberOfLines={1}>{x.task}</T>
                   <T v="caption" color="secondary">
-                    {heroById(x.heroId).name} · {x.minutes} min · {new Date(x.endedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                    {heroById(x.heroId).name} · {x.minutes} min · {new Date(x.endedAt).toLocaleTimeString(i18n.locale, { hour: 'numeric', minute: '2-digit' })}
                   </T>
                 </View>
                 <T v="footnote" style={{ fontWeight: '700' }}>+{x.reward}</T>
@@ -238,7 +246,7 @@ function Lantern({ x, y, s, i }: { x: number; y: number; s: number; i: number })
   useEffect(() => {
     if (reduced) return;
     const d = 2400 + (i % 4) * 300;
-    r.set(withDelay(i * 120, withRepeat(withSequence(withTiming(1, { duration: d / 2, easing: motion.easeInOut }), withTiming(-1, { duration: d / 2, easing: motion.easeInOut })), -1, true)));
+    r.set(withDelay(i * 120, withRepeat(withSequence(withTiming(1, { duration: d / 2, easing: motion.easeInOut }), withTiming(-1, { duration: d / 2, easing: motion.easeInOut })), -1, false)));
     return () => cancelAnimation(r);
   }, [i, reduced, r]);
   const style = useAnimatedStyle(() => ({ transform: [{ rotate: `${r.get() * 5}deg` }] }));
@@ -276,10 +284,14 @@ function Fish({ k, s }: { k: number; s: number }) {
   const v = useSharedValue(0);
   useEffect(() => {
     if (reduced) return;
-    v.set(withDelay(k * 500, withRepeat(withTiming(1, { duration: 2600 + k * 700, easing: motion.easeInOut }), -1, true)));
+    const d = 2600 + k * 700;
+    v.set(withDelay(k * 500, withRepeat(withSequence(withTiming(1, { duration: d, easing: motion.easeInOut }), withTiming(2, { duration: d, easing: motion.easeInOut })), -1, false)));
     return () => cancelAnimation(v);
   }, [k, reduced, v]);
-  const style = useAnimatedStyle(() => ({ transform: [{ translateX: v.get() * 70 * s }, { scaleX: v.get() > 0.5 ? 1 : -1 }] }));
+  const style = useAnimatedStyle(() => {
+    const x = v.get() <= 1 ? v.get() : 2 - v.get();
+    return { transform: [{ translateX: x * 70 * s }, { scaleX: v.get() < 1 ? -1 : 1 }] };
+  });
   return (
     <Animated.View style={[{ position: 'absolute', left: (190 + k * 8) * s, top: (374 + k * 8) * s, width: 18 * s, height: 10 * s }, style]} pointerEvents="none">
       <Svg width={18 * s} height={10 * s} viewBox="0 0 18 10">

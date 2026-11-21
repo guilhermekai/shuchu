@@ -1,17 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { alert } from '../src/lib/alert';
-import { router } from 'expo-router';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, AppState, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { router, usePreventRemove } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { Easing, FadeIn, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../src/lib/haptics';
+import { alert } from '../src/lib/alert';
+import { useI18n } from '../src/i18n';
 import { heroById } from '../src/data/characters';
 import { sceneById } from '../src/data/scenes';
 import { HeroSprite } from '../src/chibi/HeroSprite';
 import { Scenery, GROUND_Y, SCENE_TH } from '../src/scenes/Scenery';
 import { MotionStreaks } from '../src/components/effects';
 import { Button, JP, T } from '../src/components/ui';
-import { arcOf, useStore } from '../src/state/store';
+import { arcOf, useStore, type CompletionSummary } from '../src/state/store';
 import { motion, radius, space, useTheme } from '../src/theme/tokens';
 
 const FINAL_STRETCH_MS = 60_000;
@@ -21,21 +22,25 @@ const fmt = (ms: number) => {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 };
 
-export default function Focus() {
-  const t = useTheme();
-  const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
-  const store = useStore();
-  const active = store.active;
-  const reduced = useReducedMotion();
+/**
+ * The only part of the screen that ticks. It re-renders 4×/s by itself and reports
+ * two crossings to the parent: entering the final stretch, and reaching zero.
+ */
+const Countdown = memo(function Countdown({
+  endsAt,
+  onFinalStretch,
+  onDone,
+  onLongPress,
+}: {
+  endsAt: number;
+  onFinalStretch: () => void;
+  onDone: () => void;
+  onLongPress?: () => void;
+}) {
+  const { t: L } = useI18n();
   const [now, setNow] = useState(() => Date.now());
-  const finished = useRef(false);
+  const remaining = endsAt - now;
 
-  const remaining = active ? active.endsAt - now : 0;
-  const total = active ? active.minutes * 60_000 : 1;
-  const finalStretch = remaining <= FINAL_STRETCH_MS && remaining > 0;
-
-  // Clock ticks 4×/s for the label only. Progress bar runs on the UI thread.
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 250);
     const sub = AppState.addEventListener('change', (s) => s === 'active' && setNow(Date.now()));
@@ -45,20 +50,94 @@ export default function Focus() {
     };
   }, []);
 
-  const finish = useCallback(() => {
+  useEffect(() => {
+    if (remaining <= 0) onDone();
+    else if (remaining <= FINAL_STRETCH_MS) onFinalStretch();
+  }, [remaining, onDone, onFinalStretch]);
+
+  const secs = Math.max(0, Math.ceil(remaining / 1000));
+  return (
+    <Pressable
+      delayLongPress={600}
+      onLongPress={onLongPress}
+      accessible
+      accessibilityRole="timer"
+      accessibilityLabel={L.focus.remainingA11y(Math.ceil(secs / 60))}
+      accessibilityValue={{ text: fmt(remaining) }}
+    >
+      <T v="largeTitle" style={styles.clock}>
+        {fmt(remaining)}
+      </T>
+    </Pressable>
+  );
+});
+
+export default function Focus() {
+  const t = useTheme();
+  const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+  const store = useStore();
+  const i18n = useI18n();
+  const L = i18n.t.focus;
+  const active = store.active;
+  const reduced = useReducedMotion();
+  const finished = useRef(false);
+  const [finalStretch, setFinalStretch] = useState(false);
+  const [summary, setSummary] = useState<CompletionSummary | null>(null);
+  const [leaving, setLeaving] = useState(false);
+
+  const leave = useCallback(() => (router.canGoBack() ? router.back() : router.replace('/')), []);
+
+  const onFinalStretch = useCallback(() => {
+    setFinalStretch((was) => {
+      if (!was) AccessibilityInfo.announceForAccessibility(L.finalStretch);
+      return true;
+    });
+  }, [L.finalStretch]);
+
+  const onDone = useCallback(() => {
     if (finished.current) return;
     finished.current = true;
-    const summary = store.complete();
-    if (summary) router.replace({ pathname: '/success', params: { s: JSON.stringify(summary) } });
-  }, [store]);
+    const s = store.complete();
+    if (s) {
+      AccessibilityInfo.announceForAccessibility(i18n.t.success.title);
+      setLeaving(true);
+      setSummary(s);
+    }
+  }, [store, i18n.t.success.title]);
 
+  // Navigate only after `leaving` has switched off the back-prevention below.
   useEffect(() => {
-    if (!active && !finished.current) router.back();
-    else if (active && remaining <= 0) finish();
-  }, [active, remaining, finish]);
+    if (!store.hydrated) return; // before hydration `active` is always null
+    if (summary) router.replace({ pathname: '/success', params: { s: JSON.stringify(summary) } });
+    else if (!active && !finished.current) leave();
+    else if (!active && leaving) leave();
+  }, [store.hydrated, summary, active, leaving, leave]);
+
+  const confirmAbandon = useCallback(() => {
+    if (!active) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    alert(L.abandonTitle, L.abandonBody(heroById(active.heroId).name), [
+      { text: L.keepGoing, style: 'cancel' },
+      {
+        text: L.abandon,
+        style: 'destructive',
+        onPress: () => {
+          if (finished.current) return; // the timer already finished while the dialog was open
+          finished.current = true;
+          setLeaving(true);
+          store.abandon();
+        },
+      },
+    ]);
+  }, [active, L, store]);
+
+  // Swipe-back is disabled on iOS; this catches Android back and the browser back button.
+  usePreventRemove(!!active && !leaving, confirmAbandon);
 
   // Progress: one linear timing from current progress to 1 over what's left.
   const progress = useSharedValue(0);
+  const total = active ? active.minutes * 60_000 : 1;
   useEffect(() => {
     if (!active) return;
     const p = Math.min(1, (Date.now() - active.startedAt) / total);
@@ -79,22 +158,6 @@ export default function Focus() {
   const ground = (GROUND_Y[active.sceneId] / SCENE_TH) * sceneH;
   const ink = scene.dark ? '#FFFFFF' : '#1B1A1F';
 
-  const giveUp = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    alert('Abandon training?', `${hero.name} will head home. No onigiri for this session.`, [
-      { text: 'Keep going', style: 'cancel' },
-      {
-        text: 'Abandon',
-        style: 'destructive',
-        onPress: () => {
-          finished.current = true;
-          store.abandon();
-          router.back();
-        },
-      },
-    ]);
-  };
-
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
       <Scenery sceneId={active.sceneId} width={width} height={sceneH} moving speed={finalStretch ? 1.8 : 1}>
@@ -106,8 +169,12 @@ export default function Focus() {
         {/* Episode title card */}
         <View style={[styles.episode, { top: insets.top + space.sm }]}>
           <View style={[styles.episodeCard, { backgroundColor: scene.dark ? 'rgba(18,16,25,0.6)' : 'rgba(255,255,255,0.88)', borderColor: ink }]}>
-            <JP size={11} color={scene.dark ? '#FFFFFFB0' : '#5E5B66'}>第{arc}章 · 第{episode}話</JP>
-            <T v="headline" color={ink} numberOfLines={1}>{active.task}</T>
+            <JP size={11} color={scene.dark ? '#FFFFFFB0' : '#5E5B66'}>
+              第{arc}章 · 第{episode}話
+            </JP>
+            <T v="headline" color={ink} numberOfLines={1}>
+              {active.task}
+            </T>
           </View>
         </View>
       </Scenery>
@@ -115,34 +182,36 @@ export default function Focus() {
       <View style={[styles.bottom, { paddingBottom: insets.bottom + space.md }]}>
         <View style={{ alignItems: 'center' }}>
           <T v="footnote" color="secondary">
-            {finalStretch ? 'Final stretch!' : `${hero.name} is training · ${scene.name}`}
+            {finalStretch ? L.finalStretch : L.training(hero.name, i18n.sceneName(scene.id))}
           </T>
-          <Pressable
-            delayLongPress={600}
-            onLongPress={__DEV__ ? store.fastForward : undefined}
-            accessibilityLabel={`${Math.ceil(remaining / 60000)} minutes remaining`}
-          >
-            <T v="largeTitle" style={styles.clock}>{fmt(remaining)}</T>
-          </Pressable>
+          <Countdown endsAt={active.endsAt} onFinalStretch={onFinalStretch} onDone={onDone} onLongPress={__DEV__ ? store.fastForward : undefined} />
         </View>
 
-        <View style={[styles.track, { backgroundColor: t.border, width: trackW }]}>
+        <View
+          style={[styles.track, { backgroundColor: t.border, width: trackW }]}
+          accessible
+          accessibilityRole="progressbar"
+          accessibilityLabel={L.arcEpisode(arc, episode)}
+        >
           <Animated.View style={[styles.fill, { backgroundColor: finalStretch ? t.sakura : t.accent, width: trackW }, fillStyle]} />
         </View>
         <View style={styles.trackLabels}>
-          <T v="caption" color="tertiary">Arc {arc} · Episode {episode}</T>
-          <T v="caption" color="tertiary">{active.minutes} min</T>
+          <T v="caption" color="tertiary">{L.arcEpisode(arc, episode)}</T>
+          <T v="caption" color="tertiary">{i18n.t.common.min(active.minutes)}</T>
         </View>
 
-        {finalStretch && !reduced ? (
-          <Animated.View entering={FadeIn.duration(220).easing(motion.easeOut)}>
-            <JP size={15} color={t.sakura} style={{ textAlign: 'center' }}>あと少し！</JP>
+        {finalStretch ? (
+          // Reduced motion keeps the words and drops only the fade.
+          <Animated.View entering={reduced ? undefined : FadeIn.duration(220).easing(motion.easeOut)}>
+            <JP size={15} color={t.sakura} style={{ textAlign: 'center' }}>
+              あと少し！
+            </JP>
           </Animated.View>
         ) : (
           <View style={{ height: 20 }} />
         )}
 
-        <Button label="Abandon" kind="ghost" onPress={giveUp} haptic="selection" style={{ alignSelf: 'center' }} />
+        <Button label={L.abandon} kind="ghost" onPress={confirmAbandon} haptic="selection" style={{ alignSelf: 'center' }} />
       </View>
     </View>
   );

@@ -8,26 +8,27 @@
  */
 import { Easing } from 'react-native-reanimated';
 import { useColorScheme } from 'react-native';
+import { createContext, useContext } from 'react';
 
 const palette = {
   paper: '#F6F3EE',
   paperRaised: '#FFFFFF',
   ink: '#1B1A1F',
   inkSoft: '#5E5B66',
-  inkFaint: '#9A96A3',
+  inkFaint: '#6F6B79', // 4.7:1 on paper (was #9A96A3, 2.6:1)
   hairline: 'rgba(27,26,31,0.10)',
 
   night: '#121019',
   nightRaised: '#1D1A27',
   nightInk: '#F4F1F8',
   nightInkSoft: '#B3AEC0',
-  nightInkFaint: '#7A7588',
+  nightInkFaint: '#8E899C', // 5.6:1 on night
   nightHairline: 'rgba(244,241,248,0.12)',
 
   // Anime accents — used sparingly
   sakura: '#F07C9A',
   sakuraSoft: '#FFE3EA',
-  shu: '#E5483B', // 朱 vermilion (torii, primary action)
+  shu: '#C73A2E', // 朱 vermilion; white on it is 5.2:1 (was #E5483B, 3.9:1)
   shuSoft: '#FFE4DF',
   matcha: '#4FA36B',
   ai: '#3B5BDB', // 藍 indigo
@@ -44,6 +45,8 @@ export const light = {
   border: palette.hairline,
   panelStroke: palette.ink, // manga panel outline
   accent: palette.shu,
+  /** Fill behind white button labels. */
+  accentFill: palette.shu,
   accentSoft: palette.shuSoft,
   sakura: palette.sakura,
   sakuraSoft: palette.sakuraSoft,
@@ -64,7 +67,8 @@ export const dark: Theme = {
   textTertiary: palette.nightInkFaint,
   border: palette.nightHairline,
   panelStroke: '#4B4560', // softer ink on night paper: a white offset shadow glares
-  accent: '#FF6A5C',
+  accent: '#FF6A5C', // text/icons on night (6.7:1)
+  accentFill: palette.shu, // white label needs a deeper fill than the text accent
   accentSoft: 'rgba(255,106,92,0.16)',
   sakura: palette.sakura,
   sakuraSoft: 'rgba(240,124,154,0.16)',
@@ -75,8 +79,15 @@ export const dark: Theme = {
   onAccent: '#FFFFFF',
 };
 
+const ThemeOverrideCtx = createContext<Theme | null>(null);
+
+/** Pins a subtree to one palette, e.g. light panels on the always-dark success stage. */
+export const ThemeOverride = ThemeOverrideCtx.Provider;
+
 export function useTheme(): Theme {
-  return useColorScheme() === 'dark' ? dark : light;
+  const pinned = useContext(ThemeOverrideCtx);
+  const scheme = useColorScheme();
+  return pinned ?? (scheme === 'dark' ? dark : light);
 }
 
 export const space = { xxs: 4, xs: 8, sm: 12, md: 16, lg: 20, xl: 24, xxl: 32, xxxl: 48 } as const;

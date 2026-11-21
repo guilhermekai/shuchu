@@ -14,8 +14,8 @@
  * Reduced motion: no flash, burst, slam, rotation or rise — just opacity fades; counter shows the total.
  */
 import { useEffect, useMemo } from 'react';
-import { StyleSheet, TextInput, useWindowDimensions, View, type TextStyle } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { ScrollView, StyleSheet, TextInput, useWindowDimensions, View, type TextStyle } from 'react-native';
+import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
@@ -32,26 +32,34 @@ import Animated, {
   FadeInDown,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import * as Haptics from 'expo-haptics';
-import { heroById } from '../src/data/characters';
+import * as Haptics from '../src/lib/haptics';
+import { HEROES } from '../src/data/characters';
 import { HeroSprite } from '../src/chibi/HeroSprite';
 import { Aura, PetalBurst, Sparkle, SpeedLines } from '../src/components/effects';
 import { Button, JP, Onigiri, Panel, T } from '../src/components/ui';
 import { EPISODES_PER_ARC, type CompletionSummary } from '../src/state/store';
-import { motion, radius, space, type, useTheme } from '../src/theme/tokens';
+import { useI18n } from '../src/i18n';
+import { light, motion, radius, space, ThemeOverride, type } from '../src/theme/tokens';
 
-Animated.addWhitelistedNativeProps({ text: true });
 const AnimatedText = Animated.createAnimatedComponent(TextInput);
 
 const BG: [string, string, string] = ['#1A1030', '#2B1647', '#120B22'];
 
 export default function Success() {
   const { s } = useLocalSearchParams<{ s: string }>();
-  const data = useMemo(() => JSON.parse(s ?? 'null') as CompletionSummary | null, [s]);
+  // Params can come from a deep link or an edited URL: never trust them to parse.
+  const data = useMemo(() => {
+    try {
+      const d = JSON.parse(s ?? 'null') as CompletionSummary | null;
+      return d && typeof d.reward?.total === 'number' && HEROES.some((h) => h.id === d.heroId) ? d : null;
+    } catch {
+      return null;
+    }
+  }, [s]);
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const reduced = useReducedMotion();
-  const t = useTheme();
+  const L = useI18n().t.success;
 
   const aura = useSharedValue(0);
   const rise = useSharedValue(0);
@@ -72,11 +80,11 @@ export default function Success() {
     }
     aura.set(withTiming(1, { duration: 500, easing: out }));
     rise.set(withDelay(80, withTiming(1, { duration: 450, easing: out })));
-    flash.set(withDelay(160, withSequence(withTiming(0.75, { duration: 60 }), withTiming(0, { duration: 260, easing: out }))));
+    flash.set(withDelay(160, withSequence(withTiming(0.5, { duration: 60 }), withTiming(0, { duration: 260, easing: out }))));
     title.set(withDelay(420, withTiming(1, { duration: 300, easing: out })));
     count.set(
       withDelay(
-        760,
+        560,
         withTiming(data.reward.total, { duration: 800, easing: Easing.bezier(0.16, 1, 0.3, 1) }, (done) => {
           'worklet';
           if (done) scheduleOnRN(Haptics.impactAsync, Haptics.ImpactFeedbackStyle.Light);
@@ -105,12 +113,8 @@ export default function Success() {
     return { text: v, defaultValue: v } as never;
   });
 
-  if (!data) {
-    router.replace('/');
-    return null;
-  }
+  if (!data) return <Redirect href="/" />;
 
-  const hero = heroById(data.heroId);
   const stageH = Math.min(340, height * 0.42);
   const heroSize = Math.min(150, width * 0.38);
   const cx = width / 2;
@@ -118,7 +122,7 @@ export default function Success() {
   const sparkles = [
     [-0.36, -0.2, 22, 260], [0.34, -0.28, 16, 320], [-0.28, 0.22, 14, 380], [0.38, 0.12, 20, 440], [0.05, -0.42, 12, 500], [-0.44, -0.02, 10, 560],
   ] as const;
-  const enter = (i: number) => (reduced ? FadeIn.delay(400 + i * 80).duration(250) : FadeInDown.delay(640 + i * 80).duration(300).easing(motion.easeOut).withInitialValues({ transform: [{ translateY: 12 }] }));
+  const enter = (i: number) => (reduced ? FadeIn.delay(400 + i * 80).duration(250) : FadeInDown.delay(450 + i * 70).duration(300).easing(motion.easeOut).withInitialValues({ transform: [{ translateY: 12 }] }));
 
   return (
     <View style={{ flex: 1 }}>
@@ -150,30 +154,33 @@ export default function Success() {
       <Animated.View style={[styles.titleWrap, titleStyle]}>
         <View style={styles.titleCard}>
           <JP size={13} color="#E5483B" style={{ textAlign: 'center' }}>任務完了</JP>
-          <T v="title1" color="#1B1A1F" style={styles.title}>Mission Complete!</T>
+          <T v="title1" color="#1B1A1F" style={styles.title} header>{L.title}</T>
         </View>
+        {data.arcCleared && <ArcStamp arc={data.arc} reduced={reduced} />}
       </Animated.View>
 
       {/* Panels */}
-      <View style={[styles.panels, { paddingBottom: insets.bottom + space.md }]}>
+      <ThemeOverride value={light}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.panels, { paddingBottom: insets.bottom + space.md }]} bounces={false}>
         <Animated.View entering={enter(0)}>
           <Panel tone="gold">
             <View style={styles.rewardRow}>
               <Onigiri size={40} />
-              <View style={{ flex: 1 }}>
-                <T v="footnote" color="secondary">Onigiri earned</T>
+              <View style={{ flex: 1 }} accessible accessibilityLabel={L.earnedA11y(data.reward.total)}>
+                <T v="footnote" color="secondary">{L.earned}</T>
                 <AnimatedText
+                  accessibilityElementsHidden
+                  importantForAccessibility="no-hide-descendants"
                   editable={false}
                   animatedProps={countProps}
                   defaultValue={reduced ? `+${data.reward.total}` : '+0'}
-                  style={[type.title1 as TextStyle, styles.counter, { color: t.text }]}
-                  accessibilityLabel={`${data.reward.total} onigiri earned`}
+                  style={[type.title1 as TextStyle, styles.counter, { color: light.text }]}
                 />
               </View>
               <View style={{ alignItems: 'flex-end', gap: 2 }}>
-                <Line label={`${data.minutes} min focus`} value={data.reward.base} />
-                {data.reward.streakBonus > 0 && <Line label="Streak bonus" value={data.reward.streakBonus} />}
-                {data.reward.arcBonus > 0 && <Line label="Arc finale" value={data.reward.arcBonus} />}
+                <Line label={L.focusLine(data.minutes)} value={data.reward.base} />
+                {data.reward.streakBonus > 0 && <Line label={L.streakBonus} value={data.reward.streakBonus} />}
+                {data.reward.arcBonus > 0 && <Line label={L.arcFinale} value={data.reward.arcBonus} />}
               </View>
             </View>
           </Panel>
@@ -181,40 +188,42 @@ export default function Success() {
 
         <View style={{ flexDirection: 'row', gap: space.sm }}>
           <Animated.View entering={enter(1)} style={{ flex: 1.4 }}>
-            <Panel style={{ flex: 1 }}>
+            <Panel style={{ flexGrow: 1 }}>
               <View style={styles.small}>
-                <T v="footnote" color="secondary">{data.arcCleared ? `Arc ${data.arc} complete` : `Arc ${data.arc}`}</T>
-                <T v="headline">Episode {data.episode} cleared</T>
+                <T v="footnote" color="secondary">{data.arcCleared ? L.arcComplete(data.arc) : L.arc(data.arc)}</T>
+                <T v="headline">{L.episodeCleared(data.episode)}</T>
                 <View style={styles.pips}>
                   {Array.from({ length: EPISODES_PER_ARC }).map((_, i) => (
-                    <Pip key={i} ink={t.panelStroke} filled={i < data.episode - 1} fresh={i === data.episode - 1} reduced={reduced} />
+                    <Pip key={i} ink={light.panelStroke} filled={i < data.episode - 1} fresh={i === data.episode - 1} reduced={reduced} />
                   ))}
                 </View>
               </View>
             </Panel>
           </Animated.View>
           <Animated.View entering={enter(2)} style={{ flex: 1 }}>
-            <Panel tone="accent" style={{ flex: 1 }}>
+            <Panel tone="accent" style={{ flexGrow: 1 }}>
               <View style={styles.small}>
-                <T v="footnote" color="secondary">Streak</T>
+                <T v="footnote" color="secondary">{L.streak}</T>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
                   <T v="title1" color="#E5483B" style={{ fontVariant: ['tabular-nums'] }}>{data.streak}</T>
                   <JP size={15} color="#E5483B">日</JP>
                 </View>
-                <T v="caption" color="secondary">{data.streak === 1 ? 'Day one. Keep it up.' : 'days in a row'}</T>
+                <T v="caption" color="secondary">{data.streak === 1 ? L.dayOne : L.daysInARow}</T>
               </View>
             </Panel>
           </Animated.View>
         </View>
 
-        <Animated.View entering={reduced ? FadeIn.delay(500) : FadeIn.delay(1300).duration(250)} style={{ gap: space.xs, marginTop: space.xs }}>
-          <Button label={`Send ${hero.name} to the Matsuri`} onPress={() => router.replace('/matsuri')} />
-          <Button label="Done" kind="ghost" color="#FFFFFFCC" onPress={() => router.replace('/')} haptic="selection" />
+        <Animated.View entering={reduced ? FadeIn.delay(500) : FadeIn.delay(900).duration(220)} style={{ gap: space.xs, marginTop: space.xs }}>
+          {/* dismissTo pops back to the existing tabs instead of stacking a new copy */}
+          <Button label={L.toMatsuri} onPress={() => router.dismissTo('/matsuri')} />
+          <Button label={L.done} kind="ghost" color="#FFFFFFCC" onPress={() => router.dismissTo('/')} haptic="selection" />
         </Animated.View>
-      </View>
+      </ScrollView>
+      </ThemeOverride>
 
-      {/* Flash sits above everything */}
-      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFF' }, flashStyle]} pointerEvents="none" />
+      {/* Flash covers the stage only, so the panels never wash out */}
+      <Animated.View style={[styles.flash, { height: insets.top + stageH }, flashStyle]} pointerEvents="none" />
     </View>
   );
 }
@@ -242,7 +251,9 @@ function Pip({ filled, fresh, reduced, ink }: { filled: boolean; fresh: boolean;
 
 const styles = StyleSheet.create({
   center: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
-  titleWrap: { alignItems: 'center', marginTop: -space.xxl, zIndex: 2 },
+  titleWrap: { alignItems: 'center', marginTop: -space.xxl, marginBottom: space.sm, zIndex: 2 },
+  flash: { position: 'absolute', left: 0, right: 0, top: 0, backgroundColor: '#FFFFFF' },
+  stamp: { position: 'absolute', right: space.lg, top: -space.lg, borderWidth: 2.5, borderColor: '#C73A2E', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: '#FFF7F2' },
   titleCard: {
     backgroundColor: '#FFFFFF',
     borderWidth: 3,
@@ -256,7 +267,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 5, height: 5 },
   },
   title: { fontFamily: undefined, fontWeight: '900', letterSpacing: -0.5, textAlign: 'center' },
-  panels: { flex: 1, justifyContent: 'flex-end', paddingHorizontal: space.md, gap: space.sm },
+  panels: { flexGrow: 1, justifyContent: 'flex-end', paddingHorizontal: space.md, gap: space.sm },
   rewardRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md },
   counter: { padding: 0, margin: 0, fontVariant: ['tabular-nums'] },
   small: { padding: space.md, gap: 2 },
@@ -264,3 +275,23 @@ const styles = StyleSheet.create({
   pip: { width: 16, height: 20, borderWidth: 2, borderRadius: 3, overflow: 'hidden', transform: [{ skewX: '-12deg' }] },
 });
 
+
+/** Arc finale gets its own beat: a hanko-style stamp that thumps onto the title card. */
+function ArcStamp({ arc, reduced }: { arc: number; reduced: boolean }) {
+  const v = useSharedValue(reduced ? 1 : 0);
+  useEffect(() => {
+    if (reduced) return;
+    v.set(withDelay(760, withTiming(1, { duration: 220, easing: motion.easeOut })));
+    const h = setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium), 760 + 220);
+    return () => clearTimeout(h);
+  }, [reduced, v]);
+  const style = useAnimatedStyle(() => ({
+    opacity: v.get(),
+    transform: [{ scale: interpolate(v.get(), [0, 1], [1.6, 1]) }, { rotate: '12deg' }],
+  }));
+  return (
+    <Animated.View style={[styles.stamp, style]} pointerEvents="none">
+      <JP size={15} color="#C73A2E">第{arc}章 完</JP>
+    </Animated.View>
+  );
+}

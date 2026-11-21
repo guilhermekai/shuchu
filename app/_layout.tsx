@@ -8,6 +8,9 @@ import { StoreProvider } from '../src/state/store';
 import { AlertHost } from '../src/lib/alert';
 import { useTheme } from '../src/theme/tokens';
 
+// Deep links to /focus or /success get the tabs underneath, so back always has somewhere to go.
+export const unstable_settings = { anchor: '(tabs)' };
+
 export default function RootLayout() {
   // The single-file web preview ships these fonts inline as @font-face, so skip loading them there.
   const [loaded, error] = useFonts(
@@ -26,6 +29,11 @@ export default function RootLayout() {
           <Stack.Screen name="focus" options={{ presentation: 'fullScreenModal', animation: reduced ? 'fade' : 'slide_from_bottom', gestureEnabled: false }} />
           {/* The reward moment draws its own entrance; the native transition is a plain fade */}
           <Stack.Screen name="success" options={{ presentation: 'fullScreenModal', animation: 'fade', gestureEnabled: false }} />
+          {/* A short interruption → native form sheet sized to its content */}
+          <Stack.Screen
+            name="settings"
+            options={{ presentation: 'formSheet', sheetAllowedDetents: 'fitToContents', sheetGrabberVisible: true, sheetCornerRadius: 24 }}
+          />
         </Stack>
         <AlertHost />
       </StoreProvider>

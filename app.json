@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Sh\u016bch\u016b",
+    "name": "Shūchū",
     "slug": "shuchu",
     "scheme": "shuchu",
     "version": "1.0.0",
@@ -32,7 +32,8 @@
           "asyncRoutes": false
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": false

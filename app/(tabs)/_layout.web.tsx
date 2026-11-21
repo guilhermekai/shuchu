@@ -6,6 +6,7 @@
 import { Tabs } from 'expo-router/tabs';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { useTheme } from '../../src/theme/tokens';
+import { useI18n } from '../../src/i18n';
 
 type IconName = 'focus' | 'heroes' | 'matsuri' | 'shop';
 
@@ -46,6 +47,7 @@ function TabIcon({ name, color }: { name: IconName; color: string }) {
 
 export default function TabsLayoutWeb() {
   const t = useTheme();
+  const { t: L } = useI18n();
   return (
     <Tabs
       screenOptions={{
@@ -53,15 +55,16 @@ export default function TabsLayoutWeb() {
         animation: 'none', // tabs are peers: never slide between them
         tabBarActiveTintColor: t.accent,
         tabBarInactiveTintColor: t.textTertiary,
-        tabBarStyle: { backgroundColor: t.surface, borderTopColor: t.border },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarStyle: { backgroundColor: t.surface, borderTopColor: t.border, height: 64 },
+        tabBarLabelStyle: { fontSize: 11, lineHeight: 14, fontWeight: '600' },
+        tabBarItemStyle: { paddingTop: 4, paddingBottom: 6 },
         sceneStyle: { backgroundColor: t.bg },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Focus', tabBarIcon: ({ color }) => <TabIcon name="focus" color={String(color)} /> }} />
-      <Tabs.Screen name="heroes" options={{ title: 'Heroes', tabBarIcon: ({ color }) => <TabIcon name="heroes" color={String(color)} /> }} />
-      <Tabs.Screen name="matsuri" options={{ title: 'Matsuri', tabBarIcon: ({ color }) => <TabIcon name="matsuri" color={String(color)} /> }} />
-      <Tabs.Screen name="shop" options={{ title: 'Shop', tabBarIcon: ({ color }) => <TabIcon name="shop" color={String(color)} /> }} />
+      <Tabs.Screen name="index" options={{ title: L.tabs.focus, tabBarIcon: ({ color }) => <TabIcon name="focus" color={String(color)} /> }} />
+      <Tabs.Screen name="heroes" options={{ title: L.tabs.heroes, tabBarIcon: ({ color }) => <TabIcon name="heroes" color={String(color)} /> }} />
+      <Tabs.Screen name="matsuri" options={{ title: L.tabs.matsuri, tabBarIcon: ({ color }) => <TabIcon name="matsuri" color={String(color)} /> }} />
+      <Tabs.Screen name="shop" options={{ title: L.tabs.shop, tabBarIcon: ({ color }) => <TabIcon name="shop" color={String(color)} /> }} />
     </Tabs>
   );
 }

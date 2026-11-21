@@ -18,6 +18,22 @@ npx expo run:ios
 
 In dev builds there's a **1-minute** duration option, and **long-pressing the countdown** jumps to the last 65 seconds. Both let you check the final stretch and the success screen quickly.
 
+## Languages
+
+English and Brazilian Portuguese. The app follows the phone's language, and **Settings** (gear icon on the Focus tab) can override it. All strings live in `src/i18n/index.tsx`; the Portuguese dictionary is type-checked against the English one, so a missing translation fails `npx tsc`.
+
+## Web preview
+
+```bash
+EXPO_OFFLINE=1 npx expo export -p web --output-dir dist-web
+```
+
+```bash
+python3 scripts/build-preview.py dist-web preview/index.html
+```
+
+That builds one self-contained HTML file (needs `pip install fonttools brotli`).
+
 ## Structure
 
 | Path | What |
@@ -31,7 +47,9 @@ In dev builds there's a **1-minute** duration option, and **long-pressing the co
 | `src/theme/tokens.ts` | **All design tokens.** Swap this file to apply the real design system |
 | `src/chibi/HeroSprite.tsx` | **The Rive hand-off point.** Every screen renders characters through it |
 | `src/chibi/Chibi.tsx` | SVG placeholder chibis (idle / walk / run / cheer) |
-| `src/state/store.tsx` | Persisted state: onigiri, roster, cosmetics, sessions, arcs, streaks |
+| `src/state/store.tsx` | Persisted state: onigiri, roster, cosmetics, sessions, arcs, streaks, language |
+| `src/i18n/index.tsx` | English and Portuguese strings |
+| `app/settings.tsx` | Settings sheet (language) |
 
 ## Rive integration
 

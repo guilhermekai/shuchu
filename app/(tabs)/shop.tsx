@@ -1,20 +1,22 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../../src/lib/haptics';
 import { SHOP, SLOTS, type Slot } from '../../src/data/shop';
 import { heroById } from '../../src/data/characters';
 import { HeroSprite } from '../../src/chibi/HeroSprite';
 import { ItemIcon } from '../../src/chibi/ItemIcon';
-import { Button, Chip, JP, Onigiri, OnigiriBalance, Panel, PressableScale, T } from '../../src/components/ui';
+import { Button, Chip, JP, Onigiri, OnigiriBalance, Panel, PressableScale, T, useTabScrollInsets } from '../../src/components/ui';
 import { useStore } from '../../src/state/store';
+import { useI18n } from '../../src/i18n';
 import { radius, space, useTheme } from '../../src/theme/tokens';
 
 export default function Shop() {
   const t = useTheme();
-  const insets = useSafeAreaInsets();
+  const scrollInsets = useTabScrollInsets();
   const { width } = useWindowDimensions();
   const store = useStore();
+  const i18n = useI18n();
+  const L = i18n.t.shop;
   const [slot, setSlot] = useState<Slot>('head');
   const [previewId, setPreviewId] = useState<string | null>(null);
   const hero = heroById(store.heroId);
@@ -30,8 +32,12 @@ export default function Shop() {
   const isEquipped = preview ? mine[preview.slot] === preview.id : false;
   const short = preview ? preview.price - store.onigiri : 0;
 
+  const lastAct = useRef(0);
   const act = () => {
     if (!preview) return;
+    // Buy turns into Unequip under the finger; ignore an accidental double tap.
+    if (Date.now() - lastAct.current < 600) return;
+    lastAct.current = Date.now();
     if (!owned) {
       if (store.buyItem(preview.id)) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       return;
@@ -41,11 +47,11 @@ export default function Shop() {
   };
 
   return (
-    <ScrollView style={{ backgroundColor: t.bg }} contentContainerStyle={{ paddingTop: insets.top + space.xs, paddingBottom: insets.bottom + space.xxl, paddingHorizontal: space.md }}>
+    <ScrollView style={{ backgroundColor: t.bg }} contentContainerStyle={{ paddingTop: scrollInsets.top + space.xs, paddingBottom: space.xxl, paddingHorizontal: space.md }}>
       <View style={styles.header}>
         <View>
           <JP size={13} color={t.accent}>商店</JP>
-          <T v="largeTitle">Shop</T>
+          <T v="largeTitle">{L.title}</T>
         </View>
         <OnigiriBalance amount={store.onigiri} />
       </View>
@@ -60,12 +66,12 @@ export default function Shop() {
             {preview ? (
               <>
                 <JP size={12} color={t.textSecondary}>{preview.jp}</JP>
-                <T v="title3" numberOfLines={2}>{preview.name}</T>
+                <T v="title3" numberOfLines={2}>{i18n.itemName(preview.id)}</T>
                 <T v="footnote" color="secondary">
-                  {owned ? (isEquipped ? `${hero.name} is wearing this` : 'In your collection') : `${preview.price} onigiri`}
+                  {owned ? (isEquipped ? L.wearing(hero.name) : L.inCollection) : `${preview.price} onigiri`}
                 </T>
                 <Button
-                  label={owned ? (isEquipped ? 'Unequip' : 'Equip') : short > 0 ? `Need ${short} more` : 'Buy'}
+                  label={owned ? (isEquipped ? L.unequip : L.equip) : short > 0 ? L.needMore(short) : L.buy}
                   kind={owned ? 'secondary' : 'primary'}
                   disabled={!owned && short > 0}
                   onPress={act}
@@ -75,8 +81,8 @@ export default function Shop() {
               </>
             ) : (
               <>
-                <T v="headline">Fitting room</T>
-                <T v="footnote" color="secondary">Tap an item to try it on {hero.name}.</T>
+                <T v="headline">{L.fittingRoom}</T>
+                <T v="footnote" color="secondary">{L.fittingHint(hero.name)}</T>
               </>
             )}
           </View>
@@ -85,7 +91,7 @@ export default function Shop() {
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -space.md, marginBottom: space.md }} contentContainerStyle={{ gap: space.xs, paddingHorizontal: space.md }}>
         {SLOTS.map((s) => (
-          <Chip key={s.slot} label={s.label} sub={s.jp} selected={slot === s.slot} onPress={() => setSlot(s.slot)} />
+          <Chip key={s.slot} label={i18n.slotLabel(s.slot)} sub={s.jp} selected={slot === s.slot} onPress={() => setSlot(s.slot)} />
         ))}
       </ScrollView>
 
@@ -102,13 +108,13 @@ export default function Shop() {
               style={{ width: cardW }}
               accessibilityRole="button"
               accessibilityState={{ selected: sel }}
-              accessibilityLabel={`${item.name}, ${has ? (on ? 'equipped' : 'owned') : `${item.price} onigiri`}`}
+              accessibilityLabel={`${i18n.itemName(item.id)}, ${has ? (on ? L.equipped : L.owned) : `${item.price} onigiri`}`}
             >
               <View style={[styles.item, { backgroundColor: t.surface, borderColor: sel ? t.accent : t.border, borderWidth: sel ? 2 : 1 }]}>
                 <ItemIcon item={item} size={56} />
-                <T v="caption" numberOfLines={1} style={{ textAlign: 'center' }}>{item.name}</T>
+                <T v="caption" numberOfLines={2} style={{ textAlign: 'center' }}>{i18n.itemName(item.id)}</T>
                 {has ? (
-                  <T v="caption" color={on ? 'accent' : 'tertiary'} style={{ fontWeight: '700' }}>{on ? 'Equipped' : 'Owned'}</T>
+                  <T v="caption" color={on ? 'accent' : 'tertiary'} style={{ fontWeight: '700' }}>{on ? L.equipped : L.owned}</T>
                 ) : (
                   <View style={styles.price}>
                     <Onigiri size={12} />

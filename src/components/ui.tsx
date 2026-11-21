@@ -1,10 +1,11 @@
 /** Design-system primitives with the anime accents layered on top. */
 import { useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View, type PressableProps, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, type PressableProps, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
 import Svg, { Path, Rect } from 'react-native-svg';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../lib/haptics';
 import { font, radius, space, type as typeScale, useTheme } from '../theme/tokens';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ── Press feedback: scale 0.97 on press-in, 120ms strong ease-out (Emil) ────
 export function PressableScale({
@@ -37,6 +38,16 @@ export function PressableScale({
   );
 }
 
+/**
+ * Insets for the scroll view at the top of a tab screen.
+ * iOS: NativeTabs enables automatic content insets on that scroll view (status bar and tab bar).
+ * Android: NativeTabs pads the bottom; the top is ours. Web: the JS tab bar sits below the content.
+ */
+export function useTabScrollInsets() {
+  const insets = useSafeAreaInsets();
+  return { top: Platform.OS === 'ios' ? 0 : insets.top };
+}
+
 // ── Text ─────────────────────────────────────────────────────────────────────
 type TextVariant = keyof typeof typeScale;
 export function T({
@@ -45,12 +56,15 @@ export function T({
   style,
   children,
   numberOfLines,
+  header,
 }: {
   v?: TextVariant;
   color?: 'primary' | 'secondary' | 'tertiary' | 'accent' | 'onAccent' | string;
   style?: StyleProp<TextStyle>;
   children: ReactNode;
   numberOfLines?: number;
+  /** Announce as a heading. Large titles are headings by default. */
+  header?: boolean;
 }) {
   const t = useTheme();
   const c =
@@ -66,7 +80,7 @@ export function T({
               ? t.onAccent
               : color;
   return (
-    <Text numberOfLines={numberOfLines} style={[typeScale[v] as TextStyle, { color: c }, style]}>
+    <Text numberOfLines={numberOfLines} accessibilityRole={header ?? v === 'largeTitle' ? 'header' : undefined} style={[typeScale[v] as TextStyle, { color: c }, style]}>
       {children}
     </Text>
   );
@@ -112,8 +126,9 @@ export function Button({
   color?: string;
 }) {
   const t = useTheme();
-  const bg = kind === 'primary' ? t.accent : kind === 'secondary' ? t.surface : 'transparent';
-  const fg = color ?? (kind === 'primary' ? t.onAccent : t.text);
+  // Disabled buttons stay legible: an outline with secondary text instead of a faded fill.
+  const bg = disabled ? 'transparent' : kind === 'primary' ? t.accentFill : kind === 'secondary' ? t.surface : 'transparent';
+  const fg = disabled ? t.textSecondary : (color ?? (kind === 'primary' ? t.onAccent : t.text));
   return (
     <PressableScale
       onPress={onPress}
@@ -121,10 +136,11 @@ export function Button({
       haptic={haptic}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled }}
       style={[
         styles.button,
-        { backgroundColor: bg, opacity: disabled ? 0.4 : 1 },
-        kind === 'secondary' && { borderWidth: 2, borderColor: t.panelStroke },
+        { backgroundColor: bg },
+        (kind === 'secondary' || (disabled && kind === 'primary')) && { borderWidth: 2, borderColor: disabled ? t.border : t.panelStroke },
         style,
       ]}
     >
@@ -172,7 +188,7 @@ export function Onigiri({ size = 18 }: { size?: number }) {
 export function OnigiriBalance({ amount, compact }: { amount: number; compact?: boolean }) {
   const t = useTheme();
   return (
-    <View style={[styles.balance, { backgroundColor: t.goldSoft, paddingHorizontal: compact ? 10 : 12 }]} accessibilityLabel={`${amount} onigiri`}>
+    <View style={[styles.balance, { backgroundColor: t.goldSoft, paddingHorizontal: compact ? 10 : 12 }]} accessible accessibilityLabel={`${amount} onigiri`}>
       <Onigiri size={compact ? 16 : 18} />
       <Text style={[typeScale.headline as TextStyle, { color: t.text, fontVariant: ['tabular-nums'] }]}>{amount}</Text>
     </View>
@@ -216,6 +232,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  balance: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 34, borderRadius: radius.pill },
+  balance: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 34, paddingVertical: 4, borderRadius: radius.pill },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: space.sm },
 });
