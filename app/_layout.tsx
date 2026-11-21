@@ -1,16 +1,21 @@
+import { Platform } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useReducedMotion } from 'react-native-reanimated';
 import { useFonts, ZenMaruGothic_500Medium, ZenMaruGothic_700Bold, ZenMaruGothic_900Black } from '@expo-google-fonts/zen-maru-gothic';
 import { StoreProvider } from '../src/state/store';
+import { AlertHost } from '../src/lib/alert';
 import { useTheme } from '../src/theme/tokens';
 
 export default function RootLayout() {
-  const [loaded] = useFonts({ ZenMaruGothic_500Medium, ZenMaruGothic_700Bold, ZenMaruGothic_900Black });
+  // The single-file web preview ships these fonts inline as @font-face, so skip loading them there.
+  const [loaded, error] = useFonts(
+    Platform.OS === 'web' && !__DEV__ ? {} : { ZenMaruGothic_500Medium, ZenMaruGothic_700Bold, ZenMaruGothic_900Black },
+  );
   const t = useTheme();
   const reduced = useReducedMotion();
-  if (!loaded) return null;
+  if (!loaded && !error) return null;
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: t.bg }}>
       <StoreProvider>
@@ -22,6 +27,7 @@ export default function RootLayout() {
           {/* The reward moment draws its own entrance; the native transition is a plain fade */}
           <Stack.Screen name="success" options={{ presentation: 'fullScreenModal', animation: 'fade', gestureEnabled: false }} />
         </Stack>
+        <AlertHost />
       </StoreProvider>
     </GestureHandlerRootView>
   );

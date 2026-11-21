@@ -1,4 +1,5 @@
-import { Alert, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { alert } from '../../src/lib/alert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -26,10 +27,10 @@ export default function Heroes() {
       return;
     }
     if (store.onigiri < h.cost) {
-      Alert.alert(`${h.name} is locked`, `You need ${h.cost - store.onigiri} more onigiri. Finish a focus session to earn more.`);
+      alert(`${h.name} is locked`, `You need ${h.cost - store.onigiri} more onigiri. Finish a focus session to earn more.`);
       return;
     }
-    Alert.alert(`Recruit ${h.name}?`, `${h.archetype} · ${h.cost} onigiri`, [
+    alert(`Recruit ${h.name}?`, `${h.archetype} · ${h.cost} onigiri`, [
       { text: 'Not now', style: 'cancel' },
       {
         text: 'Recruit',

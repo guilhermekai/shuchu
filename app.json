@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Shūchū",
+    "name": "Sh\u016bch\u016b",
     "slug": "shuchu",
     "scheme": "shuchu",
     "version": "1.0.0",
@@ -16,10 +16,26 @@
     },
     "android": {
       "package": "com.shuchu.focus",
-      "adaptiveIcon": { "foregroundImage": "./assets/android-icon-foreground.png", "backgroundColor": "#F6F3EE" }
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundColor": "#F6F3EE"
+      }
     },
-    "web": { "bundler": "metro", "output": "single" },
-    "plugins": ["expo-router", "expo-font"],
-    "experiments": { "typedRoutes": false }
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "asyncRoutes": false
+        }
+      ],
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": false
+    }
   }
 }

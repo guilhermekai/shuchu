@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { AppState, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { alert } from '../src/lib/alert';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { Easing, FadeIn, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -80,7 +81,7 @@ export default function Focus() {
 
   const giveUp = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert('Abandon training?', `${hero.name} will head home. No onigiri for this session.`, [
+    alert('Abandon training?', `${hero.name} will head home. No onigiri for this session.`, [
       { text: 'Keep going', style: 'cancel' },
       {
         text: 'Abandon',
