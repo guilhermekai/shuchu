@@ -14,7 +14,7 @@
  * Reduced motion: no flash, burst, slam, rotation or rise — just opacity fades; counter shows the total.
  */
 import { useEffect, useMemo } from 'react';
-import { ScrollView, StyleSheet, TextInput, useWindowDimensions, View, type TextStyle } from 'react-native';
+import { Platform, ScrollView, StyleSheet, TextInput, useWindowDimensions, View, type TextStyle } from 'react-native';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -37,7 +37,7 @@ import { HEROES } from '../src/data/characters';
 import { HeroSprite } from '../src/chibi/HeroSprite';
 import { Aura, PetalBurst, Sparkle, SpeedLines } from '../src/components/effects';
 import { Button, JP, Onigiri, Panel, T } from '../src/components/ui';
-import { EPISODES_PER_ARC, type CompletionSummary } from '../src/state/store';
+import { EPISODES_PER_ARC, useStore, type CompletionSummary } from '../src/state/store';
 import { useI18n } from '../src/i18n';
 import { light, motion, radius, space, ThemeOverride, type } from '../src/theme/tokens';
 
@@ -60,6 +60,7 @@ export default function Success() {
   const { width, height } = useWindowDimensions();
   const reduced = useReducedMotion();
   const L = useI18n().t.success;
+  const store = useStore();
 
   const aura = useSharedValue(0);
   const rise = useSharedValue(0);
@@ -115,14 +116,20 @@ export default function Success() {
 
   if (!data) return <Redirect href="/" />;
 
-  const stageH = Math.min(340, height * 0.42);
-  const heroSize = Math.min(150, width * 0.38);
+  // The panels and buttons need ~470pt; the stage takes what's left (but never under 170).
+  const stageH = Math.max(170, Math.min(340, height * 0.42, height - insets.top - insets.bottom - 470));
+  const heroSize = Math.min(150, width * 0.38, stageH * 0.62);
   const cx = width / 2;
   const cy = insets.top + stageH * 0.55;
   const sparkles = [
     [-0.36, -0.2, 22, 260], [0.34, -0.28, 16, 320], [-0.28, 0.22, 14, 380], [0.38, 0.12, 20, 440], [0.05, -0.42, 12, 500], [-0.44, -0.02, 10, 560],
   ] as const;
-  const enter = (i: number) => (reduced ? FadeIn.delay(400 + i * 80).duration(250) : FadeInDown.delay(450 + i * 70).duration(300).easing(motion.easeOut).withInitialValues({ transform: [{ translateY: 12 }] }));
+  // Web: opacity only. Chromium can leave a stale paint of translated layers after the
+  // layout animation ends, which drew one panel over another in the preview.
+  const enter = (i: number) =>
+    reduced || Platform.OS === 'web'
+      ? FadeIn.delay((reduced ? 400 : 450) + i * 70).duration(reduced ? 250 : 300)
+      : FadeInDown.delay(450 + i * 70).duration(300).easing(motion.easeOut).withInitialValues({ transform: [{ translateY: 12 }] });
 
   return (
     <View style={{ flex: 1 }}>
@@ -186,8 +193,9 @@ export default function Success() {
           </Panel>
         </Animated.View>
 
-        <View style={{ flexDirection: 'row', gap: space.sm }}>
-          <Animated.View entering={enter(1)} style={{ flex: 1.4 }}>
+        {/* flexShrink 0: when the screen is short the list scrolls instead of squashing this row */}
+        <View style={{ flexDirection: 'row', gap: space.sm, flexShrink: 0 }}>
+          <Animated.View entering={enter(1)} style={{ flexGrow: 1.4, flexBasis: 0 }}>
             <Panel style={{ flexGrow: 1 }}>
               <View style={styles.small}>
                 <T v="footnote" color="secondary">{data.arcCleared ? L.arcComplete(data.arc) : L.arc(data.arc)}</T>
@@ -200,7 +208,7 @@ export default function Success() {
               </View>
             </Panel>
           </Animated.View>
-          <Animated.View entering={enter(2)} style={{ flex: 1 }}>
+          <Animated.View entering={enter(2)} style={{ flexGrow: 1, flexBasis: 0 }}>
             <Panel tone="accent" style={{ flexGrow: 1 }}>
               <View style={styles.small}>
                 <T v="footnote" color="secondary">{L.streak}</T>
@@ -216,8 +224,18 @@ export default function Success() {
 
         <Animated.View entering={reduced ? FadeIn.delay(500) : FadeIn.delay(900).duration(220)} style={{ gap: space.xs, marginTop: space.xs }}>
           {/* dismissTo pops back to the existing tabs instead of stacking a new copy */}
-          <Button label={L.toMatsuri} onPress={() => router.dismissTo('/matsuri')} />
-          <Button label={L.done} kind="ghost" color="#FFFFFFCC" onPress={() => router.dismissTo('/')} haptic="selection" />
+          {/* Pomodoro rhythm: a short break, or a long one after the arc's 4th episode */}
+          <Button
+            label={data.arcCleared ? L.longBreak(store.longBreak) : L.shortBreak(store.shortBreak)}
+            onPress={() => {
+              store.startBreak(data.arcCleared);
+              router.replace('/focus');
+            }}
+          />
+          <View style={{ flexDirection: 'row', gap: space.xs }}>
+            <Button label={L.toMatsuri} kind="ghost" color="#FFFFFF" onPress={() => router.dismissTo('/matsuri')} haptic="selection" containerStyle={{ flex: 1 }} />
+            <Button label={L.done} kind="ghost" color="#FFFFFFCC" onPress={() => router.dismissTo('/')} haptic="selection" containerStyle={{ flex: 1 }} />
+          </View>
         </Animated.View>
       </ScrollView>
       </ThemeOverride>

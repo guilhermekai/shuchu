@@ -18,6 +18,14 @@ npx expo run:ios
 
 In dev builds there's a **1-minute** duration option, and **long-pressing the countdown** jumps to the last 65 seconds. Both let you check the final stretch and the success screen quickly.
 
+## Features
+
+- **Focus sessions** with a walking hero, final-stretch run, **pause / resume**, and a training arc of 4 episodes.
+- **Breaks:** after each session the success screen offers a short break (default 5 min), or a long one (15 min) after the 4th episode. Lengths are in Settings.
+- **Notifications:** a local notification fires when a session or break ends, even with the phone locked or the app closed (asked for on the first Begin; iOS/Android only).
+- **Stats:** today, last 7 days, sessions, current and best streak, a 7-day chart, a 5-week calendar and the full history (chart icon on the Focus tab).
+- **Matsuri, Heroes, Shop** as before.
+
 ## Languages
 
 English and Brazilian Portuguese. The app follows the phone's language, and **Settings** (gear icon on the Focus tab) can override it. All strings live in `src/i18n/index.tsx`; the Portuguese dictionary is type-checked against the English one, so a missing translation fails `npx tsc`.
@@ -49,7 +57,9 @@ That builds one self-contained HTML file (needs `pip install fonttools brotli`).
 | `src/chibi/Chibi.tsx` | SVG placeholder chibis (idle / walk / run / cheer) |
 | `src/state/store.tsx` | Persisted state: onigiri, roster, cosmetics, sessions, arcs, streaks, language |
 | `src/i18n/index.tsx` | English and Portuguese strings |
-| `app/settings.tsx` | Settings sheet (language) |
+| `app/settings.tsx` | Settings sheet (language, break lengths) |
+| `app/stats.tsx` | Stats and history |
+| `src/lib/notify.ts` | Local end-of-timer notification |
 
 ## Rive integration
 

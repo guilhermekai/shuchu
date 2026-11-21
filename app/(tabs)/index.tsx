@@ -9,6 +9,7 @@ import { Button, Chip, JP, OnigiriBalance, Panel, PressableScale, T, useTabScrol
 import { arcOf, EPISODES_PER_ARC, streakOf, useStore } from '../../src/state/store';
 import { radius, space, type, useTheme } from '../../src/theme/tokens';
 import { useI18n } from '../../src/i18n';
+import { ensurePermission } from '../../src/lib/notify';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 const DURATIONS = __DEV__ ? [1, 15, 25, 45, 60] : [15, 25, 45, 60];
@@ -32,6 +33,8 @@ export default function FocusSetup() {
       return;
     }
     starting.current = true;
+    // Ask for notifications at the moment they make sense: the first time a timer starts.
+    ensurePermission();
     store.start(task.trim() || L.defaultTask);
     setTask('');
     router.navigate('/focus');
@@ -65,6 +68,17 @@ export default function FocusSetup() {
           </View>
           <View style={styles.headerRight}>
             <OnigiriBalance amount={store.onigiri} />
+            <PressableScale
+              onPress={() => router.push('/stats')}
+              haptic="selection"
+              accessibilityRole="button"
+              accessibilityLabel={L.stats}
+              style={[styles.iconButton, { backgroundColor: t.surface, borderColor: t.border }]}
+            >
+              <Svg width={20} height={20} viewBox="0 0 24 24">
+                <Path d="M5 20V12M12 20V5M19 20v-9" stroke={t.text} strokeWidth={2.2} strokeLinecap="round" />
+              </Svg>
+            </PressableScale>
             <PressableScale
               onPress={() => router.push('/settings')}
               haptic="selection"
@@ -174,7 +188,7 @@ export default function FocusSetup() {
           <View style={{ width: space.md - space.xs }} />
         </ScrollView>
 
-        <Button label={store.active ? L.resume : L.begin(store.minutes)} onPress={begin} style={{ marginTop: space.xs }} />
+        <Button label={store.active ? (store.active.kind === 'break' ? L.resumeBreak : L.resume) : L.begin(store.minutes)} onPress={begin} style={{ marginTop: space.xs }} />
       </ScrollView>
     </KeyboardAvoidingView>
   );

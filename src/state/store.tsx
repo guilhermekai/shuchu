@@ -3,7 +3,9 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { HEROES, heroById, type HeroId } from '../data/characters';
 import { itemById, type Slot } from '../data/shop';
 import type { SceneId } from '../data/scenes';
-import type { LangSetting } from '../i18n';
+import { getLocales } from 'expo-localization';
+import { dictFor, resolveLang, type LangSetting } from '../i18n/strings';
+import { cancelEnd, scheduleEnd } from '../lib/notify';
 
 export type Session = {
   id: string;
@@ -22,6 +24,10 @@ export type ActiveSession = {
   sceneId: SceneId;
   startedAt: number;
   endsAt: number;
+  /** Absent in data saved before breaks existed: treat as 'focus'. */
+  kind?: 'focus' | 'break';
+  /** Set while paused; resuming shifts startedAt/endsAt by the paused time. */
+  pausedAt?: number | null;
 };
 
 type State = {
@@ -39,6 +45,8 @@ type State = {
   minutes: number;
   lang: LangSetting;
   introSeen: boolean;
+  shortBreak: number;
+  longBreak: number;
 };
 
 const INITIAL: State = {
@@ -55,6 +63,8 @@ const INITIAL: State = {
   minutes: 25,
   lang: 'system',
   introSeen: false,
+  shortBreak: 5,
+  longBreak: 15,
 };
 
 type Action =
@@ -69,6 +79,10 @@ type Action =
   | { type: 'dismissIntro' }
   | { type: 'start'; task: string; now: number }
   | { type: 'abandon' }
+  | { type: 'pause'; now: number }
+  | { type: 'resume'; now: number }
+  | { type: 'startBreak'; minutes: number; now: number }
+  | { type: 'setBreaks'; shortBreak?: number; longBreak?: number }
   | { type: 'fastForward'; now: number }
   | { type: 'complete'; session: Session };
 
@@ -120,13 +134,39 @@ function reducer(s: State, a: Action): State {
           sceneId: s.sceneId,
           startedAt: a.now,
           endsAt: a.now + s.minutes * 60_000,
+          kind: 'focus',
+          pausedAt: null,
         },
       };
+    case 'startBreak':
+      return {
+        ...s,
+        active: {
+          heroId: s.heroId,
+          task: '',
+          minutes: a.minutes,
+          sceneId: s.sceneId,
+          startedAt: a.now,
+          endsAt: a.now + a.minutes * 60_000,
+          kind: 'break',
+          pausedAt: null,
+        },
+      };
+    case 'pause':
+      return s.active && !s.active.pausedAt ? { ...s, active: { ...s.active, pausedAt: a.now } } : s;
+    case 'resume': {
+      const act = s.active;
+      if (!act?.pausedAt) return s;
+      const gap = a.now - act.pausedAt;
+      return { ...s, active: { ...act, startedAt: act.startedAt + gap, endsAt: act.endsAt + gap, pausedAt: null } };
+    }
+    case 'setBreaks':
+      return { ...s, shortBreak: a.shortBreak ?? s.shortBreak, longBreak: a.longBreak ?? s.longBreak };
     case 'abandon':
       return { ...s, active: null };
     case 'fastForward':
       // Dev only: jump to 65s left so the final stretch → completion can be checked quickly.
-      return s.active ? { ...s, active: { ...s.active, startedAt: a.now + 65_000 - s.active.minutes * 60_000, endsAt: a.now + 65_000 } } : s;
+      return s.active ? { ...s, active: { ...s.active, startedAt: a.now + 65_000 - s.active.minutes * 60_000, endsAt: a.now + 65_000, pausedAt: null } } : s;
     case 'complete':
       return { ...s, active: null, onigiri: s.onigiri + a.session.reward, sessions: [...s.sessions, a.session] };
   }
@@ -167,6 +207,38 @@ export function todaysSessions(sessions: Session[], now = Date.now()) {
   return sessions.filter((x) => dayKey(x.endedAt) === k);
 }
 
+/** Focus minutes per day for the last `days` days, oldest first. */
+export function minutesByDay(sessions: Session[], days: number, now = Date.now()) {
+  const out: { day: number; minutes: number }[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setHours(12, 0, 0, 0); // noon: safe across DST shifts
+    d.setDate(d.getDate() - i);
+    const k = dayKey(d.getTime());
+    out.push({ day: d.getTime(), minutes: sessions.filter((x) => dayKey(x.endedAt) === k).reduce((a, x) => a + x.minutes, 0) });
+  }
+  return out;
+}
+
+export function bestStreakOf(sessions: Session[]) {
+  const set = new Set(sessions.map((x) => dayKey(x.endedAt)));
+  let best = 0;
+  for (const x of sessions) {
+    const d = new Date(x.endedAt);
+    d.setHours(12, 0, 0, 0);
+    const prev = new Date(d);
+    prev.setDate(prev.getDate() - 1);
+    if (set.has(dayKey(prev.getTime()))) continue; // not the start of a run
+    let run = 0;
+    while (set.has(dayKey(d.getTime()))) {
+      run++;
+      d.setDate(d.getDate() + 1);
+    }
+    best = Math.max(best, run);
+  }
+  return best;
+}
+
 export function rewardFor(minutes: number, streakAfter: number, finishesArc: boolean) {
   const base = minutes;
   const streakBonus = Math.min(streakAfter, 5) * 2;
@@ -186,6 +258,13 @@ type Store = State & {
   dismissIntro: () => void;
   start: (task: string) => void;
   abandon: () => void;
+  pause: () => void;
+  resume: () => void;
+  /** Starts a break; long after an arc's 4th episode. */
+  startBreak: (long: boolean) => void;
+  setBreaks: (b: { shortBreak?: number; longBreak?: number }) => void;
+  /** Ends the active break (finished or skipped). */
+  endBreak: () => void;
   fastForward: () => void;
   /** Completes the active session; returns the payload the success screen shows. */
   complete: () => CompletionSummary | null;
@@ -228,10 +307,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     AsyncStorage.setItem(PERSIST_KEY, JSON.stringify(rest)).catch(() => {});
   }, [state]);
 
+  // One pending notification mirrors the running timer: scheduled while it runs,
+  // cancelled when it's paused, abandoned, completed or replaced.
+  useEffect(() => {
+    if (!state.hydrated) return;
+    const a = state.active;
+    if (!a || a.pausedAt) {
+      cancelEnd();
+      return;
+    }
+    const t = dictFor(resolveLang(state.lang, getLocales()[0]?.languageCode));
+    const name = heroById(a.heroId).name;
+    if (a.kind === 'break') scheduleEnd(a.endsAt, t.notify.breakTitle, t.notify.breakBody(name));
+    else scheduleEnd(a.endsAt, t.notify.focusTitle(name), t.notify.focusBody(a.minutes));
+  }, [state.hydrated, state.active, state.lang]);
+
   const complete = useCallback((): CompletionSummary | null => {
     const s = stateRef.current;
     const a = s.active;
-    if (!a) return null;
+    if (!a || a.kind === 'break') return null;
     if (completedRef.current === a.startedAt) return null; // already completed this one
     completedRef.current = a.startedAt;
     // A timer that ran out while the app was closed counts on the day it ended.
@@ -277,6 +371,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dismissIntro: () => dispatch({ type: 'dismissIntro' }),
       start: (task) => dispatch({ type: 'start', task, now: Date.now() }),
       abandon: () => dispatch({ type: 'abandon' }),
+      pause: () => dispatch({ type: 'pause', now: Date.now() }),
+      resume: () => dispatch({ type: 'resume', now: Date.now() }),
+      startBreak: (long) => {
+        const s = stateRef.current;
+        dispatch({ type: 'startBreak', minutes: long ? s.longBreak : s.shortBreak, now: Date.now() });
+      },
+      setBreaks: (b) => dispatch({ type: 'setBreaks', ...b }),
+      endBreak: () => dispatch({ type: 'abandon' }),
       fastForward: () => dispatch({ type: 'fastForward', now: Date.now() }),
       complete,
     }),

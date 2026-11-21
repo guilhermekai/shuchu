@@ -114,6 +114,7 @@ export function Button({
   style,
   haptic = 'light',
   color,
+  containerStyle,
 }: {
   label: string;
   onPress: () => void;
@@ -124,6 +125,8 @@ export function Button({
   haptic?: 'selection' | 'light';
   /** Label color override, e.g. a ghost button on a dark stage. */
   color?: string;
+  /** Layout of the outer pressable (flex, alignSelf); `style` styles the visible button. */
+  containerStyle?: StyleProp<ViewStyle>;
 }) {
   const t = useTheme();
   // Disabled buttons stay legible: an outline with secondary text instead of a faded fill.
@@ -134,6 +137,7 @@ export function Button({
       onPress={onPress}
       disabled={disabled}
       haptic={haptic}
+      containerStyle={containerStyle}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled: !!disabled }}

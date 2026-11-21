@@ -2,7 +2,7 @@ import { StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
-import { PressableScale, T } from '../src/components/ui';
+import { Chip, PressableScale, T } from '../src/components/ui';
 import { useI18n, type LangSetting } from '../src/i18n';
 import { useStore } from '../src/state/store';
 import { radius, space, useTheme } from '../src/theme/tokens';
@@ -54,13 +54,43 @@ export default function Settings() {
           );
         })}
       </View>
+
+      <T v="footnote" color="secondary" style={[styles.section, { marginTop: space.xl }]}>
+        {L.settings.breaks.toUpperCase()}
+      </T>
+      <View style={[styles.group, styles.groupPad, { backgroundColor: t.surface, borderColor: t.border }]}>
+        <T v="subhead">{L.settings.shortBreak}</T>
+        <View style={styles.chips}>
+          {SHORT.map((m) => (
+            <Chip key={m} grow label={String(m)} sub="min" selected={store.shortBreak === m} onPress={() => store.setBreaks({ shortBreak: m })} />
+          ))}
+        </View>
+        <T v="subhead" style={{ marginTop: space.sm }}>{L.settings.longBreak}</T>
+        <View style={styles.chips}>
+          {LONG.map((m) => (
+            <Chip key={m} grow label={String(m)} sub="min" selected={store.longBreak === m} onPress={() => store.setBreaks({ longBreak: m })} />
+          ))}
+        </View>
+      </View>
+
+      <T v="footnote" color="secondary" style={[styles.section, { marginTop: space.xl }]}>
+        {L.settings.notifications.toUpperCase()}
+      </T>
+      <T v="footnote" color="secondary" style={{ marginHorizontal: space.md }}>
+        {L.settings.notificationsHint}
+      </T>
     </View>
   );
 }
+
+const SHORT = [3, 5, 10];
+const LONG = [10, 15, 20, 30];
 
 const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: space.lg },
   section: { marginBottom: space.xs, marginLeft: space.md, letterSpacing: 0.4 },
   group: { borderRadius: radius.md, borderWidth: 1, overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', minHeight: 48, paddingHorizontal: space.md },
+  groupPad: { padding: space.md, gap: space.xs },
+  chips: { flexDirection: 'row', gap: space.xs },
 });

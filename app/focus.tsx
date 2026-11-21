@@ -25,35 +25,40 @@ const fmt = (ms: number) => {
 /**
  * The only part of the screen that ticks. It re-renders 4×/s by itself and reports
  * two crossings to the parent: entering the final stretch, and reaching zero.
+ * While paused it shows the frozen time and reports nothing.
  */
 const Countdown = memo(function Countdown({
   endsAt,
+  pausedAt,
   onFinalStretch,
   onDone,
   onLongPress,
 }: {
   endsAt: number;
-  onFinalStretch: () => void;
+  pausedAt: number | null;
+  onFinalStretch?: () => void;
   onDone: () => void;
   onLongPress?: () => void;
 }) {
   const { t: L } = useI18n();
   const [now, setNow] = useState(() => Date.now());
-  const remaining = endsAt - now;
+  const remaining = endsAt - (pausedAt ?? now);
 
   useEffect(() => {
+    if (pausedAt) return;
     const id = setInterval(() => setNow(Date.now()), 250);
     const sub = AppState.addEventListener('change', (s) => s === 'active' && setNow(Date.now()));
     return () => {
       clearInterval(id);
       sub.remove();
     };
-  }, []);
+  }, [pausedAt]);
 
   useEffect(() => {
+    if (pausedAt) return;
     if (remaining <= 0) onDone();
-    else if (remaining <= FINAL_STRETCH_MS) onFinalStretch();
-  }, [remaining, onDone, onFinalStretch]);
+    else if (remaining <= FINAL_STRETCH_MS) onFinalStretch?.();
+  }, [pausedAt, remaining, onDone, onFinalStretch]);
 
   const secs = Math.max(0, Math.ceil(remaining / 1000));
   return (
@@ -65,7 +70,7 @@ const Countdown = memo(function Countdown({
       accessibilityLabel={L.focus.remainingA11y(Math.ceil(secs / 60))}
       accessibilityValue={{ text: fmt(remaining) }}
     >
-      <T v="largeTitle" style={styles.clock}>
+      <T v="largeTitle" style={[styles.clock, pausedAt ? { opacity: 0.45 } : null]}>
         {fmt(remaining)}
       </T>
     </Pressable>
@@ -80,6 +85,8 @@ export default function Focus() {
   const i18n = useI18n();
   const L = i18n.t.focus;
   const active = store.active;
+  const isBreak = active?.kind === 'break';
+  const paused = !!active?.pausedAt;
   const reduced = useReducedMotion();
   const finished = useRef(false);
   const [finalStretch, setFinalStretch] = useState(false);
@@ -95,16 +102,37 @@ export default function Focus() {
     });
   }, [L.finalStretch]);
 
+  const offerNextSession = useCallback(() => {
+    alert(L.breakOverTitle, L.breakOverBody, [
+      { text: L.later, style: 'cancel' },
+      {
+        text: L.nextSession,
+        onPress: () => {
+          store.start(i18n.t.setup.defaultTask);
+          router.navigate('/focus');
+        },
+      },
+    ]);
+  }, [L, store, i18n.t.setup.defaultTask]);
+
   const onDone = useCallback(() => {
     if (finished.current) return;
     finished.current = true;
+    if (isBreak) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      AccessibilityInfo.announceForAccessibility(L.breakOverTitle);
+      setLeaving(true);
+      store.endBreak();
+      offerNextSession();
+      return;
+    }
     const s = store.complete();
     if (s) {
       AccessibilityInfo.announceForAccessibility(i18n.t.success.title);
       setLeaving(true);
       setSummary(s);
     }
-  }, [store, i18n.t.success.title]);
+  }, [isBreak, store, i18n.t.success.title, L.breakOverTitle, offerNextSession]);
 
   // Navigate only after `leaving` has switched off the back-prevention below.
   useEffect(() => {
@@ -132,17 +160,24 @@ export default function Focus() {
     ]);
   }, [active, L, store]);
 
-  // Swipe-back is disabled on iOS; this catches Android back and the browser back button.
-  usePreventRemove(!!active && !leaving, confirmAbandon);
+  const endBreak = useCallback(() => {
+    finished.current = true;
+    setLeaving(true);
+    store.endBreak();
+  }, [store]);
 
-  // Progress: one linear timing from current progress to 1 over what's left.
+  // Swipe-back is disabled on iOS; this catches Android back and the browser back button.
+  // A break can be left freely: it keeps running and Home offers to go back to it.
+  usePreventRemove(!!active && !leaving && !isBreak, confirmAbandon);
+
+  // Progress: frozen while paused, otherwise one linear timing to 1 over what's left.
   const progress = useSharedValue(0);
   const total = active ? active.minutes * 60_000 : 1;
   useEffect(() => {
     if (!active) return;
-    const p = Math.min(1, (Date.now() - active.startedAt) / total);
-    progress.set(p);
-    progress.set(withTiming(1, { duration: Math.max(0, active.endsAt - Date.now()), easing: Easing.linear }));
+    const at = active.pausedAt ?? Date.now();
+    progress.set(Math.min(1, (at - active.startedAt) / total));
+    if (!active.pausedAt) progress.set(withTiming(1, { duration: Math.max(0, active.endsAt - Date.now()), easing: Easing.linear }));
   }, [active, total, progress]);
 
   const trackW = width - space.xl * 2;
@@ -157,23 +192,26 @@ export default function Focus() {
   const heroSize = Math.min(150, width * 0.36);
   const ground = (GROUND_Y[active.sceneId] / SCENE_TH) * sceneH;
   const ink = scene.dark ? '#FFFFFF' : '#1B1A1F';
+  const stretch = finalStretch && !isBreak && !paused;
+  const mode = isBreak || paused ? 'idle' : stretch ? 'run' : 'walk';
+  const status = paused ? `${L.paused} · ${L.pausedHint(hero.name)}` : isBreak ? L.resting(hero.name) : stretch ? L.finalStretch : L.training(hero.name, i18n.sceneName(scene.id));
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
-      <Scenery sceneId={active.sceneId} width={width} height={sceneH} moving speed={finalStretch ? 1.8 : 1}>
-        {finalStretch && <MotionStreaks width={width} height={sceneH * 0.75} color={scene.dark ? '#FFFFFF' : '#1B1A1F'} />}
+      <Scenery sceneId={active.sceneId} width={width} height={sceneH} moving={!isBreak && !paused} speed={stretch ? 1.8 : 1}>
+        {stretch && <MotionStreaks width={width} height={sceneH * 0.75} color={scene.dark ? '#FFFFFF' : '#1B1A1F'} />}
         <View style={{ position: 'absolute', left: (width - heroSize) / 2, top: ground - heroSize * (160 / 120) + 6 }}>
-          <HeroSprite heroId={active.heroId} mode={finalStretch ? 'run' : 'walk'} size={heroSize} />
+          <HeroSprite heroId={active.heroId} mode={mode} size={heroSize} />
         </View>
 
-        {/* Episode title card */}
+        {/* Episode (or break) title card */}
         <View style={[styles.episode, { top: insets.top + space.sm }]}>
           <View style={[styles.episodeCard, { backgroundColor: scene.dark ? 'rgba(18,16,25,0.6)' : 'rgba(255,255,255,0.88)', borderColor: ink }]}>
             <JP size={11} color={scene.dark ? '#FFFFFFB0' : '#5E5B66'}>
-              第{arc}章 · 第{episode}話
+              {isBreak ? '休憩' : `第${arc}章 · 第${episode}話`}
             </JP>
             <T v="headline" color={ink} numberOfLines={1}>
-              {active.task}
+              {isBreak ? L.breakTitle : active.task}
             </T>
           </View>
         </View>
@@ -181,26 +219,32 @@ export default function Focus() {
 
       <View style={[styles.bottom, { paddingBottom: insets.bottom + space.md }]}>
         <View style={{ alignItems: 'center' }}>
-          <T v="footnote" color="secondary">
-            {finalStretch ? L.finalStretch : L.training(hero.name, i18n.sceneName(scene.id))}
+          <T v="footnote" color="secondary" numberOfLines={1}>
+            {status}
           </T>
-          <Countdown endsAt={active.endsAt} onFinalStretch={onFinalStretch} onDone={onDone} onLongPress={__DEV__ ? store.fastForward : undefined} />
+          <Countdown
+            endsAt={active.endsAt}
+            pausedAt={active.pausedAt ?? null}
+            onFinalStretch={isBreak ? undefined : onFinalStretch}
+            onDone={onDone}
+            onLongPress={__DEV__ ? store.fastForward : undefined}
+          />
         </View>
 
         <View
           style={[styles.track, { backgroundColor: t.border, width: trackW }]}
           accessible
           accessibilityRole="progressbar"
-          accessibilityLabel={L.arcEpisode(arc, episode)}
+          accessibilityLabel={isBreak ? L.breakTitle : L.arcEpisode(arc, episode)}
         >
-          <Animated.View style={[styles.fill, { backgroundColor: finalStretch ? t.sakura : t.accent, width: trackW }, fillStyle]} />
+          <Animated.View style={[styles.fill, { backgroundColor: isBreak ? t.success : stretch ? t.sakura : t.accent, width: trackW }, fillStyle]} />
         </View>
         <View style={styles.trackLabels}>
-          <T v="caption" color="tertiary">{L.arcEpisode(arc, episode)}</T>
+          <T v="caption" color="tertiary">{isBreak ? L.breakTitle : L.arcEpisode(arc, episode)}</T>
           <T v="caption" color="tertiary">{i18n.t.common.min(active.minutes)}</T>
         </View>
 
-        {finalStretch ? (
+        {stretch ? (
           // Reduced motion keeps the words and drops only the fade.
           <Animated.View entering={reduced ? undefined : FadeIn.duration(220).easing(motion.easeOut)}>
             <JP size={15} color={t.sakura} style={{ textAlign: 'center' }}>
@@ -211,7 +255,20 @@ export default function Focus() {
           <View style={{ height: 20 }} />
         )}
 
-        <Button label={L.abandon} kind="ghost" onPress={confirmAbandon} haptic="selection" style={{ alignSelf: 'center' }} />
+        <View style={styles.actions}>
+          <Button
+            label={paused ? L.resume : L.pause}
+            kind={paused ? 'primary' : 'secondary'}
+            onPress={paused ? store.resume : store.pause}
+            haptic="selection"
+            containerStyle={styles.action}
+          />
+          {isBreak ? (
+            <Button label={L.skipBreak} kind="ghost" onPress={endBreak} haptic="selection" containerStyle={styles.action} />
+          ) : (
+            <Button label={L.abandon} kind="ghost" onPress={confirmAbandon} haptic="selection" containerStyle={styles.action} />
+          )}
+        </View>
       </View>
     </View>
   );
@@ -225,4 +282,6 @@ const styles = StyleSheet.create({
   track: { height: 10, borderRadius: 5, overflow: 'hidden', alignSelf: 'center' },
   fill: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 5 },
   trackLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: -space.sm },
+  actions: { flexDirection: 'row', gap: space.sm, justifyContent: 'center' },
+  action: { minWidth: 140 },
 });
