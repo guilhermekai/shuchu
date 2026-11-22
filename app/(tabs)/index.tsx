@@ -55,9 +55,15 @@ export default function FocusSetup() {
   const ground = (GROUND_Y[store.sceneId] / SCENE_TH) * stageH;
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: t.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    // collapsable={false}: NativeTabs needs the wrapper kept in the native tree to find the ScrollView
+    // (scroll-to-top on tab re-tap, transparent tab bar at the scroll edge).
+    <KeyboardAvoidingView
+      collapsable={false}
+      style={{ flex: 1, backgroundColor: t.bg }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <ScrollView
-        contentContainerStyle={{ paddingTop: scrollInsets.top + space.xs, paddingBottom: space.xl, paddingHorizontal: space.md }}
+        contentContainerStyle={{ paddingTop: scrollInsets.top + space.xs, paddingBottom: scrollInsets.bottom + space.xl, paddingHorizontal: space.md }}
         keyboardShouldPersistTaps="handled"
       >
         {/* Header */}

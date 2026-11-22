@@ -1,7 +1,7 @@
 /** Design-system primitives with the anime accents layered on top. */
 import { useState, type ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, type PressableProps, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
-import Animated from 'react-native-reanimated';
+import Animated, { cubicBezier } from 'react-native-reanimated';
 import Svg, { Path, Rect } from 'react-native-svg';
 import * as Haptics from '../lib/haptics';
 import { font, radius, space, type as typeScale, useTheme } from '../theme/tokens';
@@ -39,13 +39,19 @@ export function PressableScale({
 }
 
 /**
- * Insets for the scroll view at the top of a tab screen.
- * iOS: NativeTabs enables automatic content insets on that scroll view (status bar and tab bar).
+ * Insets for the scroll view of a tab screen.
+ * iOS: automatic content insets are disabled in the tabs layout: they only reached the initially
+ * selected tab, so the other tabs drew their title under the status bar. We pad the top for the
+ * status bar and the bottom so the last row clears the floating tab bar.
  * Android: NativeTabs pads the bottom; the top is ours. Web: the JS tab bar sits below the content.
  */
+const IOS_TAB_BAR_CLEARANCE = 64;
 export function useTabScrollInsets() {
   const insets = useSafeAreaInsets();
-  return { top: Platform.OS === 'ios' ? 0 : insets.top };
+  return {
+    top: insets.top,
+    bottom: Platform.OS === 'ios' ? insets.bottom + IOS_TAB_BAR_CLEARANCE : 0,
+  };
 }
 
 // ── Text ─────────────────────────────────────────────────────────────────────
@@ -216,7 +222,8 @@ const styles = StyleSheet.create({
     transform: [{ scale: 1 }],
     transitionProperty: 'transform',
     transitionDuration: '120ms',
-    transitionTimingFunction: 'cubic-bezier(0.23, 1, 0.32, 1)',
+    // Native Reanimated CSS only accepts predefined names as strings; use the cubicBezier() helper.
+    transitionTimingFunction: cubicBezier(0.23, 1, 0.32, 1),
   } as ViewStyle,
   pressed: { transform: [{ scale: 0.97 }] },
   button: {

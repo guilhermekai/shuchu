@@ -47,7 +47,7 @@ export default function Shop() {
   };
 
   return (
-    <ScrollView style={{ backgroundColor: t.bg }} contentContainerStyle={{ paddingTop: scrollInsets.top + space.xs, paddingBottom: space.xxl, paddingHorizontal: space.md }}>
+    <ScrollView style={{ backgroundColor: t.bg }} contentContainerStyle={{ paddingTop: scrollInsets.top + space.xs, paddingBottom: scrollInsets.bottom + space.xxl, paddingHorizontal: space.md }}>
       <View style={styles.header}>
         <View>
           <JP size={13} color={t.accent}>商店</JP>
