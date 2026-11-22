@@ -18,6 +18,7 @@ import { Platform, ScrollView, StyleSheet, TextInput, useWindowDimensions, View,
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { StatusBar } from 'expo-status-bar';
 import Animated, {
   Easing,
   interpolate,
@@ -133,6 +134,8 @@ export default function Success() {
 
   return (
     <View style={{ flex: 1 }}>
+      {/* Dark stage in both themes: keep the clock and battery readable. */}
+      <StatusBar style="light" />
       <LinearGradient colors={BG} style={StyleSheet.absoluteFill} />
 
       {/* Stage */}

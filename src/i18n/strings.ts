@@ -129,7 +129,7 @@ const en = {
   },
   notify: {
     focusTitle: (name: string) => `${name} finished the mission!`,
-    focusBody: (m: number) => `${m} minutes of focus done. Your onigiri are waiting.`,
+    focusBody: (m: number) => `${m} ${plural(m, 'minute', 'minutes')} of focus done. Your onigiri are waiting.`,
     breakTitle: 'Break’s over',
     breakBody: (name: string) => `${name} is ready for the next session.`,
   },
@@ -276,7 +276,7 @@ const pt: Dict = {
   },
   notify: {
     focusTitle: (name) => `${name} concluiu a missão!`,
-    focusBody: (m) => `${m} minutos de foco concluídos. Seus onigiri estão esperando.`,
+    focusBody: (m) => `${m} ${plural(m, 'minuto de foco concluído', 'minutos de foco concluídos')}. Seus onigiri estão esperando.`,
     breakTitle: 'Fim do intervalo',
     breakBody: (name) => `${name} está pronto para a próxima sessão.`,
   },

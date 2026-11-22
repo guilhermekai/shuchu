@@ -28,7 +28,7 @@ export default function RootLayout() {
           {/* A self-contained task the user can abandon → full-screen modal */}
           <Stack.Screen name="focus" options={{ presentation: 'fullScreenModal', animation: reduced ? 'fade' : 'slide_from_bottom', gestureEnabled: false }} />
           {/* The reward moment draws its own entrance; the native transition is a plain fade */}
-          <Stack.Screen name="success" options={{ presentation: 'fullScreenModal', animation: 'fade', gestureEnabled: false }} />
+          <Stack.Screen name="success" options={{ presentation: 'fullScreenModal', animation: 'fade', gestureEnabled: false, statusBarStyle: 'light' }} />
           <Stack.Screen name="stats" options={{ presentation: 'modal' }} />
           {/* A short interruption → native form sheet sized to its content */}
           <Stack.Screen

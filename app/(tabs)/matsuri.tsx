@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, useWindowDimensions, View, type ScrollViewInstance } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect, useIsFocused, useNavigation } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { StatusBar } from 'expo-status-bar';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -31,6 +32,17 @@ const VH = 460;
 export default function Matsuri() {
   const t = useTheme();
   const insets = useSafeAreaInsets();
+  const focused = useIsFocused();
+  // iOS takes the status bar style from the native stack screen that hosts the tabs, so switch it
+  // to light over the night sky while this tab is focused (expo-status-bar below covers Android).
+  const navigation = useNavigation();
+  useFocusEffect(
+    useCallback(() => {
+      const stack = navigation.getParent();
+      stack?.setOptions({ statusBarStyle: 'light' });
+      return () => stack?.setOptions({ statusBarStyle: 'auto' });
+    }, [navigation]),
+  );
   const { width } = useWindowDimensions();
   const store = useStore();
   const i18n = useI18n();
@@ -57,108 +69,112 @@ export default function Matsuri() {
   const totalMin = today.reduce((a, x) => a + x.minutes, 0);
 
   return (
-    // Full-bleed night sky under the status bar, so this tab manages its own insets.
-    // The bottom pad clears the tab bar on every platform (iOS draws it over content here).
-    <ScrollView style={{ backgroundColor: t.bg }} contentContainerStyle={{ paddingBottom: insets.bottom + 96 }} contentInsetAdjustmentBehavior="never">
-      <View style={{ height: sceneH + insets.top }}>
-        <LinearGradient colors={['#0B0820', '#22143F', '#3A1E4F']} style={StyleSheet.absoluteFill} />
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          ref={pan}
-          onContentSizeChange={() => pan.current?.scrollTo({ x: (sceneW - width) / 2, animated: false })}
-          style={{ marginTop: insets.top }}
-          decelerationRate="fast"
-        >
-          <View style={{ width: sceneW, height: sceneH }}>
-            <Fireworks s={s} />
-            <Svg width={sceneW} height={sceneH} viewBox={`0 0 ${VW} ${VH}`} style={StyleSheet.absoluteFill}>
-              <FestivalBackdrop />
-            </Svg>
-            <Lanterns s={s} />
-            <Goldfish s={s} />
+    <>
+      {/* Full-bleed night sky under the status bar, so this tab manages its own insets.
+          The bottom pad clears the tab bar on every platform (iOS draws it over content here). */}
+      <ScrollView style={{ backgroundColor: t.bg }} contentContainerStyle={{ paddingBottom: insets.bottom + 96 }} contentInsetAdjustmentBehavior="never">
+        <View style={{ height: sceneH + insets.top }}>
+          <LinearGradient colors={['#0B0820', '#22143F', '#3A1E4F']} style={StyleSheet.absoluteFill} />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            ref={pan}
+            onContentSizeChange={() => pan.current?.scrollTo({ x: (sceneW - width) / 2, animated: false })}
+            style={{ marginTop: insets.top }}
+            decelerationRate="fast"
+          >
+            <View style={{ width: sceneW, height: sceneH }}>
+              <Fireworks s={s} />
+              <Svg width={sceneW} height={sceneH} viewBox={`0 0 ${VW} ${VH}`} style={StyleSheet.absoluteFill}>
+                <FestivalBackdrop />
+              </Svg>
+              <Lanterns s={s} />
+              <Goldfish s={s} />
 
-            {guests.map((g, i) => {
-              const x = SPOTS[i % SPOTS.length] * s;
-              const size = 78;
-              return (
-                <PressableScale
-                  key={g.heroId}
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    setPicked(picked === g.heroId ? null : g.heroId);
-                  }}
-                  containerStyle={{ position: 'absolute', left: x - size / 2, top: (428 - (i % 2) * 16) * s - size * (160 / 120), zIndex: 10 + (i % 2 ? 0 : 1) }}
-                  accessibilityRole="button"
-                  accessibilityLabel={L.sessionsA11y(heroById(g.heroId).name, g.list.length)}
-                >
-                  <HeroSprite heroId={g.heroId} size={size} mode={g.heroId === newest ? 'cheer' : 'idle'} offset={i * 0.21} />
-                  <View style={[styles.nameTag, { borderColor: picked === g.heroId ? '#FFD27A' : 'transparent' }]}>
-                    <T v="caption" color="#FFFFFF" style={{ fontWeight: '700' }}>{heroById(g.heroId).name}</T>
-                    {g.list.length > 1 && <T v="caption" color="#FFD27A">×{g.list.length}</T>}
-                  </View>
-                </PressableScale>
-              );
-            })}
+              {guests.map((g, i) => {
+                const x = SPOTS[i % SPOTS.length] * s;
+                const size = 78;
+                return (
+                  <PressableScale
+                    key={g.heroId}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setPicked(picked === g.heroId ? null : g.heroId);
+                    }}
+                    containerStyle={{ position: 'absolute', left: x - size / 2, top: (428 - (i % 2) * 16) * s - size * (160 / 120), zIndex: 10 + (i % 2 ? 0 : 1) }}
+                    accessibilityRole="button"
+                    accessibilityLabel={L.sessionsA11y(heroById(g.heroId).name, g.list.length)}
+                  >
+                    <HeroSprite heroId={g.heroId} size={size} mode={g.heroId === newest ? 'cheer' : 'idle'} offset={i * 0.21} />
+                    <View style={[styles.nameTag, { borderColor: picked === g.heroId ? '#FFD27A' : 'transparent' }]}>
+                      <T v="caption" color="#FFFFFF" style={{ fontWeight: '700' }}>{heroById(g.heroId).name}</T>
+                      {g.list.length > 1 && <T v="caption" color="#FFD27A">×{g.list.length}</T>}
+                    </View>
+                  </PressableScale>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          {/* Scrim keeps the title and subtitle readable over the lantern string */}
+          <LinearGradient colors={['rgba(11,8,32,0.92)', 'rgba(11,8,32,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: insets.top + 120 }} pointerEvents="none" />
+          <View style={[styles.overlay, { top: insets.top + space.xs }]} pointerEvents="none">
+            <JP size={13} color="#FFB0C4">夏祭り</JP>
+            <T v="largeTitle" color="#FFFFFF">Matsuri</T>
+            <T v="footnote" color="#FFFFFFB3">
+              {guests.length === 0 ? L.closed : L.celebrating(guests.length, totalMin)}
+            </T>
           </View>
-        </ScrollView>
-
-        {/* Scrim keeps the title and subtitle readable over the lantern string */}
-        <LinearGradient colors={['rgba(11,8,32,0.92)', 'rgba(11,8,32,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: insets.top + 120 }} pointerEvents="none" />
-        <View style={[styles.overlay, { top: insets.top + space.xs }]} pointerEvents="none">
-          <JP size={13} color="#FFB0C4">夏祭り</JP>
-          <T v="largeTitle" color="#FFFFFF">Matsuri</T>
-          <T v="footnote" color="#FFFFFFB3">
-            {guests.length === 0 ? L.closed : L.celebrating(guests.length, totalMin)}
-          </T>
         </View>
-      </View>
 
-      <View style={{ paddingHorizontal: space.md, paddingTop: space.lg, gap: space.sm }}>
-        {pickedGuest && (
-          <Animated.View key={pickedGuest.heroId} entering={FadeIn.duration(180).easing(motion.easeOut)}>
-            <Panel tone="accent">
-              <View style={{ padding: space.md, gap: 2 }}>
-                <T v="headline">{L.finished(heroById(pickedGuest.heroId).name, pickedGuest.list.length)}</T>
-                {pickedGuest.list.map((x) => (
-                  <T key={x.id} v="footnote" color="secondary">
-                    {x.task} · {x.minutes} min · +{x.reward} onigiri
-                  </T>
-                ))}
+        <View style={{ paddingHorizontal: space.md, paddingTop: space.lg, gap: space.sm }}>
+          {pickedGuest && (
+            <Animated.View key={pickedGuest.heroId} entering={FadeIn.duration(180).easing(motion.easeOut)}>
+              <Panel tone="accent">
+                <View style={{ padding: space.md, gap: 2 }}>
+                  <T v="headline">{L.finished(heroById(pickedGuest.heroId).name, pickedGuest.list.length)}</T>
+                  {pickedGuest.list.map((x) => (
+                    <T key={x.id} v="footnote" color="secondary">
+                      {x.task} · {x.minutes} min · +{x.reward} onigiri
+                    </T>
+                  ))}
+                </View>
+              </Panel>
+            </Animated.View>
+          )}
+
+          {guests.length === 0 ? (
+            <Panel>
+              <View style={{ padding: space.lg, gap: space.sm, alignItems: 'flex-start' }}>
+                <T v="headline">{L.emptyTitle}</T>
+                <T v="subhead" color="secondary">{L.emptyBody}</T>
+                <Button label={L.start} onPress={() => router.navigate('/')} style={{ alignSelf: 'stretch', marginTop: space.xs }} />
               </View>
             </Panel>
-          </Animated.View>
-        )}
-
-        {guests.length === 0 ? (
-          <Panel>
-            <View style={{ padding: space.lg, gap: space.sm, alignItems: 'flex-start' }}>
-              <T v="headline">{L.emptyTitle}</T>
-              <T v="subhead" color="secondary">{L.emptyBody}</T>
-              <Button label={L.start} onPress={() => router.navigate('/')} style={{ alignSelf: 'stretch', marginTop: space.xs }} />
-            </View>
-          </Panel>
-        ) : (
-          <>
-            <T v="title3" style={{ marginTop: space.xs }}>{L.guests}</T>
-            {[...today].reverse().map((x) => (
-              <View key={x.id} style={[styles.row, { backgroundColor: t.surface, borderColor: t.border }]}>
-                <View style={[styles.rowAvatar, { backgroundColor: t.accentSoft }]}>
-                  <JP size={18} color={t.accent}>{heroById(x.heroId).kanji}</JP>
+          ) : (
+            <>
+              <T v="title3" style={{ marginTop: space.xs }}>{L.guests}</T>
+              {[...today].reverse().map((x) => (
+                <View key={x.id} style={[styles.row, { backgroundColor: t.surface, borderColor: t.border }]}>
+                  <View style={[styles.rowAvatar, { backgroundColor: t.accentSoft }]}>
+                    <JP size={18} color={t.accent}>{heroById(x.heroId).kanji}</JP>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <T v="subhead" style={{ fontWeight: '600' }} numberOfLines={1}>{x.task}</T>
+                    <T v="caption" color="secondary">
+                      {heroById(x.heroId).name} · {x.minutes} min · {new Date(x.endedAt).toLocaleTimeString(i18n.locale, { hour: 'numeric', minute: '2-digit' })}
+                    </T>
+                  </View>
+                  <T v="footnote" style={{ fontWeight: '700' }}>+{x.reward}</T>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <T v="subhead" style={{ fontWeight: '600' }} numberOfLines={1}>{x.task}</T>
-                  <T v="caption" color="secondary">
-                    {heroById(x.heroId).name} · {x.minutes} min · {new Date(x.endedAt).toLocaleTimeString(i18n.locale, { hour: 'numeric', minute: '2-digit' })}
-                  </T>
-                </View>
-                <T v="footnote" style={{ fontWeight: '700' }}>+{x.reward}</T>
-              </View>
-            ))}
-          </>
-        )}
-      </View>
-    </ScrollView>
+              ))}
+            </>
+          )}
+        </View>
+      </ScrollView>
+      {/* Light status bar over the night sky, only while this tab is showing (tabs stay mounted). */}
+      {focused && <StatusBar style="light" />}
+    </>
   );
 }
 
