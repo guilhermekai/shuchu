@@ -40,6 +40,10 @@ export default function Stats() {
   const level = (m: number) => (m === 0 ? 0 : m < 25 ? 1 : m < 50 ? 2 : m < 90 ? 3 : 4);
   const LEVEL_OPACITY = [0, 0.28, 0.5, 0.75, 1];
   const [pickedCell, setPickedCell] = useState<number | null>(null);
+  // Cell size in points from the grid's measured width: percentage widths plus gap in a wrapping
+  // row collapsed to zero on iOS, leaving the calendar blank.
+  const [gridW, setGridW] = useState(0);
+  const cellSize = gridW > 0 ? Math.floor((gridW - GRID_GAP * 6) / 7) : 0;
 
   const history = useMemo(() => [...sessions].reverse().slice(0, 30), [sessions]);
 
@@ -113,14 +117,14 @@ export default function Stats() {
           <T v="subhead" color="secondary" style={{ marginBottom: space.sm }}>
             {pickedCell === null ? ' ' : `${dateLabel(month[pickedCell].day)} · ${L.minutes(month[pickedCell].minutes)}`}
           </T>
-          <View style={styles.grid}>
+          <View style={styles.grid} onLayout={(e) => setGridW(e.nativeEvent.layout.width)}>
             {month.map((d, i) => {
               const lv = level(d.minutes);
               return (
                 <Pressable
                   key={d.day}
                   onPress={() => setPickedCell(i)}
-                  style={[styles.cell, { backgroundColor: lv === 0 ? t.border : t.accent, opacity: lv === 0 ? 1 : LEVEL_OPACITY[lv] }, pickedCell === i && { borderWidth: 2, borderColor: t.text }]}
+                  style={[styles.cell, { width: cellSize, height: cellSize, backgroundColor: lv === 0 ? t.border : t.accent, opacity: lv === 0 ? 1 : LEVEL_OPACITY[lv] }, pickedCell === i && { borderWidth: 2, borderColor: t.text }]}
                   accessibilityRole="button"
                   accessibilityLabel={L.chartA11y(dateLabel(d.day), d.minutes)}
                 />
@@ -173,6 +177,8 @@ function Tile({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
+const GRID_GAP = 4;
+
 const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: space.lg },
   tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
@@ -184,8 +190,8 @@ const styles = StyleSheet.create({
   cap: { marginBottom: 4, fontVariant: ['tabular-nums'] },
   axis: { flexDirection: 'row', marginTop: 6 },
   axisLabel: { flex: 1, textAlign: 'center' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
-  cell: { width: `${(100 - 6 * 1.3) / 7}%`, aspectRatio: 1, borderRadius: 4 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP },
+  cell: { borderRadius: 4 },
   key: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: space.sm, alignSelf: 'flex-end' },
   keyCell: { width: 12, height: 12, borderRadius: 3 },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.sm, borderRadius: radius.md, borderWidth: 1, marginBottom: space.xs },
