@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
 import { HEROES, heroById, type HeroId } from '../data/characters';
 import { dealPrice, itemById, SHOP, type Slot } from '../data/shop';
+import { track } from '../lib/analytics';
 import type { SceneId } from '../data/scenes';
 import { getLocales } from 'expo-localization';
 import { dictFor, resolveLang, type LangSetting } from '../i18n/strings';
@@ -405,6 +406,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       reward: reward.total,
     };
     dispatch({ type: 'complete', session });
+    track('session_complete', { minutes: a.minutes, reward: reward.total, streak, arc_cleared: arcCleared, first_today: firstToday });
     return { heroId: a.heroId, minutes: a.minutes, task: a.task, reward, streak, arc, episode, arcCleared, balance: s.onigiri + reward.total };
   }, []);
 
@@ -414,31 +416,59 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       selectHero: (heroId) => dispatch({ type: 'selectHero', heroId }),
       buyHero: (heroId) => {
         const s = stateRef.current;
-        if (s.onigiri < heroById(heroId).cost) return false;
+        const cost = heroById(heroId).cost;
+        if (s.ownedHeroes.includes(heroId) || s.onigiri < cost) return false;
         dispatch({ type: 'buyHero', heroId });
+        track('hero_recruit', { hero: heroId, cost, sessions: s.sessions.length });
         return true;
       },
       buyItem: (itemId) => {
+        const s = stateRef.current;
         const it = itemById(itemId);
-        if (!it || stateRef.current.onigiri < itemPrice(stateRef.current, itemId)) return false;
+        const price = itemPrice(s, itemId);
+        if (!it || s.ownedItems.includes(itemId) || s.onigiri < price) return false;
         dispatch({ type: 'buyItem', itemId });
+        track('item_buy', { item: itemId, price, deal: isDeal(s, itemId), sessions: s.sessions.length });
         return true;
       },
       toggleEquip: (itemId) => dispatch({ type: 'toggleEquip', itemId }),
       setScene: (sceneId) => dispatch({ type: 'setScene', sceneId }),
       setMinutes: (minutes) => dispatch({ type: 'setMinutes', minutes }),
-      setLang: (lang) => dispatch({ type: 'setLang', lang }),
+      setLang: (lang) => {
+        dispatch({ type: 'setLang', lang });
+        track('setting_change', { key: 'lang', value: lang });
+      },
       dismissIntro: () => dispatch({ type: 'dismissIntro' }),
-      start: (task) => dispatch({ type: 'start', task, now: Date.now() }),
-      abandon: () => dispatch({ type: 'abandon' }),
+      start: (task) => {
+        const s = stateRef.current;
+        dispatch({ type: 'start', task, now: Date.now() });
+        track('session_start', { kind: 'focus', minutes: s.minutes, scene: s.sceneId, hero: s.heroId });
+      },
+      abandon: () => {
+        const a = stateRef.current.active;
+        dispatch({ type: 'abandon' });
+        if (a) {
+          const progress = ((a.pausedAt ?? Date.now()) - a.startedAt) / (a.endsAt - a.startedAt);
+          track('session_abandon', { kind: a.kind ?? 'focus', minutes: a.minutes, progress: Math.round(Math.min(1, Math.max(0, progress)) * 100) / 100 });
+        }
+      },
       pause: () => dispatch({ type: 'pause', now: Date.now() }),
       resume: () => dispatch({ type: 'resume', now: Date.now() }),
       startBreak: (long) => {
         const s = stateRef.current;
-        dispatch({ type: 'startBreak', minutes: long ? s.longBreak : s.shortBreak, now: Date.now() });
+        const minutes = long ? s.longBreak : s.shortBreak;
+        dispatch({ type: 'startBreak', minutes, now: Date.now() });
+        track('session_start', { kind: 'break', minutes, scene: s.sceneId, hero: s.heroId });
       },
-      setBreaks: (b) => dispatch({ type: 'setBreaks', ...b }),
-      setKeepAwake: (on) => dispatch({ type: 'setKeepAwake', on }),
+      setBreaks: (b) => {
+        dispatch({ type: 'setBreaks', ...b });
+        if (b.shortBreak !== undefined) track('setting_change', { key: 'short_break', value: b.shortBreak });
+        if (b.longBreak !== undefined) track('setting_change', { key: 'long_break', value: b.longBreak });
+      },
+      setKeepAwake: (on) => {
+        dispatch({ type: 'setKeepAwake', on });
+        track('setting_change', { key: 'keep_awake', value: on });
+      },
       rollDeal: () => dispatch({ type: 'rollDeal', now: Date.now(), pick: Math.random() }),
       endBreak: () => dispatch({ type: 'abandon' }),
       fastForward: () => dispatch({ type: 'fastForward', now: Date.now() }),
