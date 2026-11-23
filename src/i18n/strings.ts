@@ -143,6 +143,12 @@ const en = {
     breakTitle: 'Break’s over',
     breakBody: (name: string) => `${name} is ready for the next session.`,
   },
+  live: {
+    training: (name: string) => `${name} is training`,
+    resting: (name: string) => `${name} is resting`,
+    paused: 'Paused',
+    breakLabel: 'Break',
+  },
   stats: {
     title: 'Stats',
     today: 'Today',
@@ -300,6 +306,12 @@ const pt: Dict = {
     focusBody: (m) => `${m} ${plural(m, 'minuto de foco concluído', 'minutos de foco concluídos')}. Seus onigiri estão esperando.`,
     breakTitle: 'Fim do intervalo',
     breakBody: (name) => `${name} está pronto para a próxima sessão.`,
+  },
+  live: {
+    training: (name) => `${name} está treinando`,
+    resting: (name) => `${name} está descansando`,
+    paused: 'Pausado',
+    breakLabel: 'Intervalo',
   },
   stats: {
     title: 'Estatísticas',

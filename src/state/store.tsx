@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { HEROES, heroById, type HeroId } from '../data/characters';
 import { dealPrice, itemById, SHOP, type Slot } from '../data/shop';
 import { track } from '../lib/analytics';
+import { syncLiveActivity } from '../lib/liveActivity';
 import type { SceneId } from '../data/scenes';
 import { getLocales } from 'expo-localization';
 import { dictFor, resolveLang, type LangSetting } from '../i18n/strings';
@@ -207,6 +208,12 @@ const dayKey = (t: number) => {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 };
 
+/** "m:ss" for a duration in ms (Live Activity while paused). */
+const clock = (ms: number) => {
+  const sec = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+};
+
 /** True when `itemId` is today's deal. */
 export function isDeal(s: Pick<State, 'deal'>, itemId: string, now = Date.now()) {
   return s.deal?.day === dayKey(now) && s.deal.itemId === itemId;
@@ -379,6 +386,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const name = heroById(a.heroId).name;
     if (a.kind === 'break') scheduleEnd(a.endsAt, t.notify.breakTitle, t.notify.breakBody(name));
     else scheduleEnd(a.endsAt, t.notify.focusTitle(name), t.notify.focusBody(a.minutes));
+  }, [state.hydrated, state.active, state.lang]);
+
+  // The Live Activity (iOS) mirrors the same timer, paused or running.
+  useEffect(() => {
+    if (!state.hydrated) return;
+    const a = state.active;
+    if (!a) {
+      syncLiveActivity(null);
+      return;
+    }
+    const t = dictFor(resolveLang(state.lang, getLocales()[0]?.languageCode));
+    const name = heroById(a.heroId).name;
+    const isBreak = a.kind === 'break';
+    syncLiveActivity({
+      title: isBreak ? t.live.resting(name) : t.live.training(name),
+      subtitle: isBreak ? t.live.breakLabel : a.task,
+      pausedLabel: t.live.paused,
+      startedAt: a.startedAt,
+      endsAt: a.endsAt,
+      pausedAt: a.pausedAt ?? null,
+      pausedRemaining: a.pausedAt ? clock(a.endsAt - a.pausedAt) : '',
+      isBreak,
+    });
   }, [state.hydrated, state.active, state.lang]);
 
   const complete = useCallback((): CompletionSummary | null => {
