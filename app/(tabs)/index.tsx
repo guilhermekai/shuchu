@@ -12,7 +12,8 @@ import { useI18n } from '../../src/i18n';
 import { ensurePermission } from '../../src/lib/notify';
 import Svg, { Circle, Path } from 'react-native-svg';
 
-const DURATIONS = __DEV__ ? [1, 15, 25, 45, 60] : [15, 25, 45, 60];
+// 5–10 for a gentle start, 25 classic Pomodoro, 45–90 for deep work. Dev builds add 1 min for testing.
+const DURATIONS = [...(__DEV__ ? [1] : []), 5, 10, 15, 25, 45, 60, 90];
 
 export default function FocusSetup() {
   const t = useTheme();
@@ -178,11 +179,13 @@ export default function FocusSetup() {
 
         {/* Duration */}
         <T v="headline" style={styles.label}>{L.duration}</T>
-        <View style={styles.row}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row} style={{ marginHorizontal: -space.md }}>
+          <View style={{ width: space.md - space.xs }} />
           {DURATIONS.map((m) => (
-            <Chip key={m} grow label={String(m)} sub="min" selected={store.minutes === m} onPress={() => store.setMinutes(m)} />
+            <Chip key={m} minWidth={60} label={String(m)} sub="min" selected={store.minutes === m} onPress={() => store.setMinutes(m)} />
           ))}
-        </View>
+          <View style={{ width: space.md - space.xs }} />
+        </ScrollView>
 
         {/* Scenery */}
         <T v="headline" style={styles.label}>{L.scenery}</T>

@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, AppState, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { router, usePreventRemove } from 'expo-router';
+import { useKeepAwake } from 'expo-keep-awake';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { Easing, FadeIn, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import * as Haptics from '../src/lib/haptics';
@@ -76,6 +77,12 @@ const Countdown = memo(function Countdown({
     </Pressable>
   );
 });
+
+/** Keeps the screen on while mounted (Settings → Keep screen on). */
+function KeepScreenOn() {
+  useKeepAwake('shuchu-timer');
+  return null;
+}
 
 export default function Focus() {
   const t = useTheme();
@@ -198,6 +205,7 @@ export default function Focus() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
+      {store.keepAwake && !paused && <KeepScreenOn />}
       <Scenery sceneId={active.sceneId} width={width} height={sceneH} moving={!isBreak && !paused} speed={stretch ? 1.8 : 1}>
         {stretch && <MotionStreaks width={width} height={sceneH * 0.75} color={scene.dark ? '#FFFFFF' : '#1B1A1F'} />}
         <View style={{ position: 'absolute', left: (width - heroSize) / 2, top: ground - heroSize * (160 / 120) + 6 }}>

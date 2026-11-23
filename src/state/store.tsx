@@ -47,6 +47,8 @@ type State = {
   introSeen: boolean;
   shortBreak: number;
   longBreak: number;
+  /** Keep the screen on while a session or break runs. */
+  keepAwake: boolean;
 };
 
 const INITIAL: State = {
@@ -65,6 +67,7 @@ const INITIAL: State = {
   introSeen: false,
   shortBreak: 5,
   longBreak: 15,
+  keepAwake: true,
 };
 
 type Action =
@@ -83,6 +86,7 @@ type Action =
   | { type: 'resume'; now: number }
   | { type: 'startBreak'; minutes: number; now: number }
   | { type: 'setBreaks'; shortBreak?: number; longBreak?: number }
+  | { type: 'setKeepAwake'; on: boolean }
   | { type: 'fastForward'; now: number }
   | { type: 'complete'; session: Session };
 
@@ -162,6 +166,8 @@ function reducer(s: State, a: Action): State {
     }
     case 'setBreaks':
       return { ...s, shortBreak: a.shortBreak ?? s.shortBreak, longBreak: a.longBreak ?? s.longBreak };
+    case 'setKeepAwake':
+      return { ...s, keepAwake: a.on };
     case 'abandon':
       return { ...s, active: null };
     case 'fastForward':
@@ -189,17 +195,55 @@ const dayKey = (t: number) => {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 };
 
+/**
+ * Rest days: one missed day doesn't break a streak, at most once in any 7 days. Life happens,
+ * and losing a long streak to one bad day is the classic reason people quit habit apps.
+ * Only days with a session count toward the streak length.
+ */
+export const REST_DAY_WINDOW = 7;
+
+const dayBefore = (t: number) => {
+  const d = new Date(t);
+  d.setHours(12, 0, 0, 0); // noon: safe across DST shifts
+  d.setDate(d.getDate() - 1);
+  return d.getTime();
+};
+
+/**
+ * Length of the streak whose most recent active day is `end`. `sinceRest` is how many active days
+ * ago the last rest day was (0 when the day right after `end` was just used as one).
+ */
+function streakEndingAt(days: Set<string>, end: number, sinceRest = Infinity) {
+  let streak = 0;
+  let cursor = end;
+  while (true) {
+    if (days.has(dayKey(cursor))) {
+      streak++;
+      sinceRest++;
+      cursor = dayBefore(cursor);
+      continue;
+    }
+    // A single missing day, with activity the day before it and no other rest day nearby.
+    const prev = dayBefore(cursor);
+    if (streak > 0 && sinceRest >= REST_DAY_WINDOW && days.has(dayKey(prev))) {
+      sinceRest = 0;
+      cursor = prev;
+      continue;
+    }
+    return streak;
+  }
+}
+
 export function streakOf(sessions: Session[], now = Date.now()) {
   const days = new Set(sessions.map((x) => dayKey(x.endedAt)));
-  let streak = 0;
-  const cursor = new Date(now);
+  const yesterday = dayBefore(now);
+  const twoDaysAgo = dayBefore(yesterday);
+  if (days.has(dayKey(now))) return streakEndingAt(days, now);
   // Today not done yet doesn't break the streak.
-  if (!days.has(dayKey(cursor.getTime()))) cursor.setDate(cursor.getDate() - 1);
-  while (days.has(dayKey(cursor.getTime()))) {
-    streak++;
-    cursor.setDate(cursor.getDate() - 1);
-  }
-  return streak;
+  if (days.has(dayKey(yesterday))) return streakEndingAt(days, yesterday);
+  // Yesterday missed: it can be the rest day, if the run before it hasn't used one recently.
+  if (days.has(dayKey(twoDaysAgo))) return streakEndingAt(days, twoDaysAgo, 0);
+  return 0;
 }
 
 export function todaysSessions(sessions: Session[], now = Date.now()) {
@@ -221,21 +265,9 @@ export function minutesByDay(sessions: Session[], days: number, now = Date.now()
 }
 
 export function bestStreakOf(sessions: Session[]) {
-  const set = new Set(sessions.map((x) => dayKey(x.endedAt)));
+  const days = new Set(sessions.map((x) => dayKey(x.endedAt)));
   let best = 0;
-  for (const x of sessions) {
-    const d = new Date(x.endedAt);
-    d.setHours(12, 0, 0, 0);
-    const prev = new Date(d);
-    prev.setDate(prev.getDate() - 1);
-    if (set.has(dayKey(prev.getTime()))) continue; // not the start of a run
-    let run = 0;
-    while (set.has(dayKey(d.getTime()))) {
-      run++;
-      d.setDate(d.getDate() + 1);
-    }
-    best = Math.max(best, run);
-  }
+  for (const x of sessions) best = Math.max(best, streakEndingAt(days, x.endedAt));
   return best;
 }
 
@@ -263,6 +295,7 @@ type Store = State & {
   /** Starts a break; long after an arc's 4th episode. */
   startBreak: (long: boolean) => void;
   setBreaks: (b: { shortBreak?: number; longBreak?: number }) => void;
+  setKeepAwake: (on: boolean) => void;
   /** Ends the active break (finished or skipped). */
   endBreak: () => void;
   fastForward: () => void;
@@ -334,7 +367,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const { arc, episode } = arcOf(prior);
     const arcCleared = episode === EPISODES_PER_ARC;
     const streak = streakOf([...s.sessions, { endedAt: now } as Session], now);
-    const reward = rewardFor(a.minutes, streak, arcCleared);
+    // The streak bonus is paid once a day (first session), so short sessions can't farm it.
+    const firstToday = todaysSessions(s.sessions, now).length === 0;
+    const reward = rewardFor(a.minutes, firstToday ? streak : 0, arcCleared);
     const session: Session = {
       id: `${now}`,
       heroId: a.heroId,
@@ -378,6 +413,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'startBreak', minutes: long ? s.longBreak : s.shortBreak, now: Date.now() });
       },
       setBreaks: (b) => dispatch({ type: 'setBreaks', ...b }),
+      setKeepAwake: (on) => dispatch({ type: 'setKeepAwake', on }),
       endBreak: () => dispatch({ type: 'abandon' }),
       fastForward: () => dispatch({ type: 'fastForward', now: Date.now() }),
       complete,

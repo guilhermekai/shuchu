@@ -63,6 +63,7 @@ export function T({
   children,
   numberOfLines,
   header,
+  maxScale,
 }: {
   v?: TextVariant;
   color?: 'primary' | 'secondary' | 'tertiary' | 'accent' | 'onAccent' | string;
@@ -71,6 +72,8 @@ export function T({
   numberOfLines?: number;
   /** Announce as a heading. Large titles are headings by default. */
   header?: boolean;
+  /** Cap on Dynamic Type scaling, for text in tight spots. Large titles default to 1.5×. */
+  maxScale?: number;
 }) {
   const t = useTheme();
   const c =
@@ -86,7 +89,10 @@ export function T({
               ? t.onAccent
               : color;
   return (
-    <Text numberOfLines={numberOfLines} accessibilityRole={header ?? v === 'largeTitle' ? 'header' : undefined} style={[typeScale[v] as TextStyle, { color: c }, style]}>
+    <Text
+      numberOfLines={numberOfLines}
+      maxFontSizeMultiplier={maxScale ?? (v === 'largeTitle' ? 1.5 : undefined)}
+      accessibilityRole={header ?? v === 'largeTitle' ? 'header' : undefined} style={[typeScale[v] as TextStyle, { color: c }, style]}>
       {children}
     </Text>
   );
@@ -160,7 +166,21 @@ export function Button({
   );
 }
 
-export function Chip({ label, sub, selected, onPress, grow }: { label: string; sub?: string; selected: boolean; onPress: () => void; grow?: boolean }) {
+export function Chip({
+  label,
+  sub,
+  selected,
+  onPress,
+  grow,
+  minWidth,
+}: {
+  label: string;
+  sub?: string;
+  selected: boolean;
+  onPress: () => void;
+  grow?: boolean;
+  minWidth?: number;
+}) {
   const t = useTheme();
   return (
     <PressableScale
@@ -172,6 +192,7 @@ export function Chip({ label, sub, selected, onPress, grow }: { label: string; s
       style={[
         styles.chip,
         {
+          minWidth,
           backgroundColor: selected ? t.text : t.surface,
           borderColor: selected ? t.text : t.border,
           transitionProperty: ['backgroundColor', 'borderColor'],
@@ -179,7 +200,10 @@ export function Chip({ label, sub, selected, onPress, grow }: { label: string; s
         } as ViewStyle,
       ]}
     >
-      <Text style={[typeScale.subhead as TextStyle, { color: selected ? t.bg : t.text, fontWeight: '600' }]}>{label}</Text>
+      {/* One line at any text size: numbers like "60" must never wrap into "6 / 0". */}
+      <Text numberOfLines={1} adjustsFontSizeToFit style={[typeScale.subhead as TextStyle, { color: selected ? t.bg : t.text, fontWeight: '600' }]}>
+        {label}
+      </Text>
       {sub ? <Text style={{ fontFamily: font.jp, fontSize: 10, color: selected ? t.bg : t.textTertiary, opacity: 0.8 }}>{sub}</Text> : null}
     </PressableScale>
   );
@@ -200,7 +224,9 @@ export function OnigiriBalance({ amount, compact }: { amount: number; compact?: 
   return (
     <View style={[styles.balance, { backgroundColor: t.goldSoft, paddingHorizontal: compact ? 10 : 12 }]} accessible accessibilityLabel={`${amount} onigiri`}>
       <Onigiri size={compact ? 16 : 18} />
-      <Text style={[typeScale.headline as TextStyle, { color: t.text, fontVariant: ['tabular-nums'] }]}>{amount}</Text>
+      <Text maxFontSizeMultiplier={1.5} style={[typeScale.headline as TextStyle, { color: t.text, fontVariant: ['tabular-nums'] }]}>
+        {amount}
+      </Text>
     </View>
   );
 }

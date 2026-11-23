@@ -66,6 +66,7 @@ export default function Stats() {
         <Tile label={L.sessions} value={String(sessions.length)} />
         <Tile label={L.streak} value={L.days(streak)} sub={`${L.best}: ${L.days(best)}`} />
       </View>
+      <T v="footnote" color="tertiary" style={{ marginTop: space.xs, marginHorizontal: space.xs }}>{L.restDay}</T>
 
       {/* 7-day columns */}
       <Panel style={{ marginTop: space.lg }}>

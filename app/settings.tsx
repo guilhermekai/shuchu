@@ -1,4 +1,4 @@
-import { StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
@@ -18,9 +18,13 @@ export default function Settings() {
     { value: 'pt', label: L.settings.portuguese },
   ];
 
-  // Sized by content (no flex: 1) so the sheet's fitToContents detent can measure it.
+  // Sized by content (no flex: 1) so the sheet's fitToContents detent can measure it. A ScrollView,
+  // so large accessibility text that outgrows the screen can still be reached.
   return (
-    <View style={{ backgroundColor: t.bg, paddingHorizontal: space.md, paddingTop: space.xl, paddingBottom: insets.bottom + space.lg }}>
+    <ScrollView
+      style={{ backgroundColor: t.bg }}
+      contentContainerStyle={{ paddingHorizontal: space.md, paddingTop: space.xl, paddingBottom: insets.bottom + space.lg }}
+    >
       <View style={styles.titleRow}>
         <T v="title2">{L.settings.title}</T>
         <PressableScale onPress={() => router.back()} haptic="selection" accessibilityRole="button" accessibilityLabel={L.common.dismiss}>
@@ -74,12 +78,31 @@ export default function Settings() {
       </View>
 
       <T v="footnote" color="secondary" style={[styles.section, { marginTop: space.xl }]}>
+        {L.settings.session.toUpperCase()}
+      </T>
+      <View style={[styles.group, { backgroundColor: t.surface, borderColor: t.border }]}>
+        <View style={styles.row}>
+          <T v="body" style={{ flex: 1 }}>{L.settings.keepAwake}</T>
+          <Switch
+            value={store.keepAwake}
+            onValueChange={store.setKeepAwake}
+            trackColor={{ true: t.accent }}
+            accessibilityLabel={L.settings.keepAwake}
+            accessibilityHint={L.settings.keepAwakeHint}
+          />
+        </View>
+      </View>
+      <T v="footnote" color="secondary" style={{ marginHorizontal: space.md, marginTop: space.xs }}>
+        {L.settings.keepAwakeHint}
+      </T>
+
+      <T v="footnote" color="secondary" style={[styles.section, { marginTop: space.xl }]}>
         {L.settings.notifications.toUpperCase()}
       </T>
       <T v="footnote" color="secondary" style={{ marginHorizontal: space.md }}>
         {L.settings.notificationsHint}
       </T>
-    </View>
+    </ScrollView>
   );
 }
 

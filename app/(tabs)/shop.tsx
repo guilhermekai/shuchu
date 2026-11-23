@@ -112,7 +112,7 @@ export default function Shop() {
             >
               <View style={[styles.item, { backgroundColor: t.surface, borderColor: sel ? t.accent : t.border, borderWidth: sel ? 2 : 1 }]}>
                 <ItemIcon item={item} size={56} />
-                <T v="caption" numberOfLines={2} style={{ textAlign: 'center' }}>{i18n.itemName(item.id)}</T>
+                <T v="caption" numberOfLines={2} maxScale={1.4} style={{ textAlign: 'center' }}>{i18n.itemName(item.id)}</T>
                 {has ? (
                   <T v="caption" color={on ? 'accent' : 'tertiary'} style={{ fontWeight: '700' }}>{on ? L.equipped : L.owned}</T>
                 ) : (

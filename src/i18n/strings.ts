@@ -126,6 +126,9 @@ const en = {
     longBreak: 'Long break (after 4 sessions)',
     notifications: 'Notifications',
     notificationsHint: 'You get a notification when a session or break ends, even with the phone locked.',
+    session: 'During a session',
+    keepAwake: 'Keep screen on',
+    keepAwakeHint: 'Watch your hero train on your desk. Turned off while paused.',
   },
   notify: {
     focusTitle: (name: string) => `${name} finished the mission!`,
@@ -147,6 +150,7 @@ const en = {
     calendarTitle: 'Last 5 weeks',
     history: 'History',
     empty: 'Your finished sessions will show up here.',
+    restDay: 'Missing one day a week won’t break your streak: it counts as a rest day.',
   },
   // Content: English comes from src/data; only translations live here.
   data: {
@@ -273,6 +277,9 @@ const pt: Dict = {
     longBreak: 'Intervalo longo (a cada 4 sessões)',
     notifications: 'Notificações',
     notificationsHint: 'Você recebe uma notificação quando uma sessão ou intervalo termina, mesmo com o celular bloqueado.',
+    session: 'Durante a sessão',
+    keepAwake: 'Manter a tela ligada',
+    keepAwakeHint: 'Veja seu herói treinar com o celular na mesa. Desliga quando pausado.',
   },
   notify: {
     focusTitle: (name) => `${name} concluiu a missão!`,
@@ -294,6 +301,7 @@ const pt: Dict = {
     calendarTitle: 'Últimas 5 semanas',
     history: 'Histórico',
     empty: 'Suas sessões concluídas vão aparecer aqui.',
+    restDay: 'Pular um dia por semana não quebra sua sequência: conta como dia de descanso.',
   },
   data: {
     archetype: {
