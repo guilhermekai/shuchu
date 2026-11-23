@@ -35,6 +35,7 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 import * as Haptics from '../src/lib/haptics';
 import { HEROES } from '../src/data/characters';
+import { SHOP } from '../src/data/shop';
 import { HeroSprite } from '../src/chibi/HeroSprite';
 import { Aura, PetalBurst, Sparkle, SpeedLines } from '../src/components/effects';
 import { Button, JP, Onigiri, Panel, T } from '../src/components/ui';
@@ -60,8 +61,22 @@ export default function Success() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const reduced = useReducedMotion();
-  const L = useI18n().t.success;
+  const i18n = useI18n();
+  const L = i18n.t.success;
   const store = useStore();
+
+  // Goal gradient: show what the new balance is close to (next hero, then the next item).
+  const nextHero = HEROES.filter((h) => h.cost > 0 && !store.ownedHeroes.includes(h.id)).sort((a, b) => a.cost - b.cost)[0];
+  const nextItem = nextHero ? undefined : SHOP.filter((i) => !store.ownedItems.includes(i.id)).sort((a, b) => a.price - b.price)[0];
+  const goal = nextHero
+    ? store.onigiri >= nextHero.cost
+      ? L.canRecruit(nextHero.name)
+      : L.nextHero(nextHero.cost - store.onigiri, nextHero.name)
+    : nextItem
+      ? store.onigiri >= nextItem.price
+        ? L.canBuy(i18n.itemName(nextItem.id))
+        : L.nextItem(nextItem.price - store.onigiri, i18n.itemName(nextItem.id))
+      : null;
 
   const aura = useSharedValue(0);
   const rise = useSharedValue(0);
@@ -193,6 +208,11 @@ export default function Success() {
                 {data.reward.arcBonus > 0 && <Line label={L.arcFinale} value={data.reward.arcBonus} />}
               </View>
             </View>
+            {goal && (
+              <T v="footnote" color="secondary" style={styles.goal}>
+                {goal}
+              </T>
+            )}
           </Panel>
         </Animated.View>
 
@@ -290,6 +310,7 @@ const styles = StyleSheet.create({
   title: { fontFamily: undefined, fontWeight: '900', letterSpacing: -0.5, textAlign: 'center' },
   panels: { flexGrow: 1, justifyContent: 'flex-end', paddingHorizontal: space.md, gap: space.sm },
   rewardRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md },
+  goal: { paddingHorizontal: space.md, paddingBottom: space.sm, marginTop: -space.xs },
   counter: { padding: 0, margin: 0, fontVariant: ['tabular-nums'] },
   small: { padding: space.md, gap: 2 },
   pips: { flexDirection: 'row', gap: 5, marginTop: space.xs },

@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
 import { HEROES, heroById, type HeroId } from '../data/characters';
-import { itemById, type Slot } from '../data/shop';
+import { dealPrice, itemById, SHOP, type Slot } from '../data/shop';
 import type { SceneId } from '../data/scenes';
 import { getLocales } from 'expo-localization';
 import { dictFor, resolveLang, type LangSetting } from '../i18n/strings';
@@ -49,6 +49,8 @@ type State = {
   longBreak: number;
   /** Keep the screen on while a session or break runs. */
   keepAwake: boolean;
+  /** Today's shop deal, picked once a day from unowned items (null when everything is owned). */
+  deal: { day: string; itemId: string | null } | null;
 };
 
 const INITIAL: State = {
@@ -68,6 +70,7 @@ const INITIAL: State = {
   shortBreak: 5,
   longBreak: 15,
   keepAwake: true,
+  deal: null,
 };
 
 type Action =
@@ -87,6 +90,7 @@ type Action =
   | { type: 'startBreak'; minutes: number; now: number }
   | { type: 'setBreaks'; shortBreak?: number; longBreak?: number }
   | { type: 'setKeepAwake'; on: boolean }
+  | { type: 'rollDeal'; now: number; pick: number }
   | { type: 'fastForward'; now: number }
   | { type: 'complete'; session: Session };
 
@@ -103,11 +107,12 @@ function reducer(s: State, a: Action): State {
     }
     case 'buyItem': {
       const item = itemById(a.itemId);
-      if (!item || s.ownedItems.includes(item.id) || s.onigiri < item.price) return s;
+      const price = item ? itemPrice(s, item.id) : Infinity;
+      if (!item || s.ownedItems.includes(item.id) || s.onigiri < price) return s;
       const mine = { ...(s.equipped[s.heroId] ?? {}), [item.slot]: item.id };
       return {
         ...s,
-        onigiri: s.onigiri - item.price,
+        onigiri: s.onigiri - price,
         ownedItems: [...s.ownedItems, item.id],
         equipped: { ...s.equipped, [s.heroId]: mine },
       };
@@ -166,6 +171,12 @@ function reducer(s: State, a: Action): State {
     }
     case 'setBreaks':
       return { ...s, shortBreak: a.shortBreak ?? s.shortBreak, longBreak: a.longBreak ?? s.longBreak };
+    case 'rollDeal': {
+      const day = dayKey(a.now);
+      if (s.deal?.day === day) return s;
+      const unowned = SHOP.filter((i) => !s.ownedItems.includes(i.id));
+      return { ...s, deal: { day, itemId: unowned.length ? unowned[Math.floor(a.pick * unowned.length)].id : null } };
+    }
     case 'setKeepAwake':
       return { ...s, keepAwake: a.on };
     case 'abandon':
@@ -194,6 +205,18 @@ const dayKey = (t: number) => {
   const d = new Date(t);
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 };
+
+/** True when `itemId` is today's deal. */
+export function isDeal(s: Pick<State, 'deal'>, itemId: string, now = Date.now()) {
+  return s.deal?.day === dayKey(now) && s.deal.itemId === itemId;
+}
+
+/** What an item costs right now (today's deal is discounted). */
+export function itemPrice(s: Pick<State, 'deal'>, itemId: string, now = Date.now()) {
+  const item = itemById(itemId);
+  if (!item) return Infinity;
+  return isDeal(s, itemId, now) ? dealPrice(item.price) : item.price;
+}
 
 /**
  * Rest days: one missed day doesn't break a streak, at most once in any 7 days. Life happens,
@@ -296,6 +319,8 @@ type Store = State & {
   startBreak: (long: boolean) => void;
   setBreaks: (b: { shortBreak?: number; longBreak?: number }) => void;
   setKeepAwake: (on: boolean) => void;
+  /** Pick today's shop deal if the day changed. */
+  rollDeal: () => void;
   /** Ends the active break (finished or skipped). */
   endBreak: () => void;
   fastForward: () => void;
@@ -395,7 +420,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       buyItem: (itemId) => {
         const it = itemById(itemId);
-        if (!it || stateRef.current.onigiri < it.price) return false;
+        if (!it || stateRef.current.onigiri < itemPrice(stateRef.current, itemId)) return false;
         dispatch({ type: 'buyItem', itemId });
         return true;
       },
@@ -414,6 +439,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       setBreaks: (b) => dispatch({ type: 'setBreaks', ...b }),
       setKeepAwake: (on) => dispatch({ type: 'setKeepAwake', on }),
+      rollDeal: () => dispatch({ type: 'rollDeal', now: Date.now(), pick: Math.random() }),
       endBreak: () => dispatch({ type: 'abandon' }),
       fastForward: () => dispatch({ type: 'fastForward', now: Date.now() }),
       complete,

@@ -1,12 +1,13 @@
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import * as Haptics from '../../src/lib/haptics';
-import { SHOP, SLOTS, type Slot } from '../../src/data/shop';
+import { DEAL_DISCOUNT, SHOP, SLOTS, itemById, type Slot } from '../../src/data/shop';
 import { heroById } from '../../src/data/characters';
 import { HeroSprite } from '../../src/chibi/HeroSprite';
 import { ItemIcon } from '../../src/chibi/ItemIcon';
 import { Button, Chip, JP, Onigiri, OnigiriBalance, Panel, PressableScale, T, useTabScrollInsets } from '../../src/components/ui';
-import { useStore } from '../../src/state/store';
+import { isDeal, itemPrice, useStore } from '../../src/state/store';
 import { useI18n } from '../../src/i18n';
 import { radius, space, useTheme } from '../../src/theme/tokens';
 
@@ -30,7 +31,14 @@ export default function Shop() {
 
   const owned = preview ? store.ownedItems.includes(preview.id) : false;
   const isEquipped = preview ? mine[preview.slot] === preview.id : false;
-  const short = preview ? preview.price - store.onigiri : 0;
+  const priceOf = (id: string) => itemPrice(store, id);
+  const short = preview ? priceOf(preview.id) - store.onigiri : 0;
+
+  // A new deal each day, picked the first time the shop is opened that day.
+  const { rollDeal } = store;
+  useFocusEffect(useCallback(() => rollDeal(), [rollDeal]));
+  const dealItem = store.deal?.itemId && isDeal(store, store.deal.itemId) && !store.ownedItems.includes(store.deal.itemId) ? itemById(store.deal.itemId) : undefined;
+  const pct = Math.round(DEAL_DISCOUNT * 100);
 
   const lastAct = useRef(0);
   const act = () => {
@@ -68,7 +76,7 @@ export default function Shop() {
                 <JP size={12} color={t.textSecondary}>{preview.jp}</JP>
                 <T v="title3" numberOfLines={2}>{i18n.itemName(preview.id)}</T>
                 <T v="footnote" color="secondary">
-                  {owned ? (isEquipped ? L.wearing(hero.name) : L.inCollection) : `${preview.price} onigiri`}
+                  {owned ? (isEquipped ? L.wearing(hero.name) : L.inCollection) : `${priceOf(preview.id)} onigiri`}
                 </T>
                 <Button
                   label={owned ? (isEquipped ? L.unequip : L.equip) : short > 0 ? L.needMore(short) : L.buy}
@@ -89,6 +97,33 @@ export default function Shop() {
         </View>
       </Panel>
 
+      {dealItem && (
+        <PressableScale
+          onPress={() => {
+            setSlot(dealItem.slot);
+            setPreviewId(dealItem.id);
+          }}
+          haptic="selection"
+          accessibilityRole="button"
+          accessibilityLabel={L.dealA11y(i18n.itemName(dealItem.id), priceOf(dealItem.id), dealItem.price)}
+          style={[styles.deal, { backgroundColor: t.accentSoft, borderColor: t.accent }]}
+        >
+          <ItemIcon item={dealItem} size={40} />
+          <View style={{ flex: 1 }}>
+            <T v="footnote" color="accent" style={{ fontWeight: '700' }}>{L.dealTitle}</T>
+            <T v="subhead" numberOfLines={1}>{i18n.itemName(dealItem.id)}</T>
+            <T v="caption" color="secondary">{L.dealBody(pct)}</T>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <T v="caption" color="tertiary" style={styles.was}>{dealItem.price}</T>
+            <View style={styles.price}>
+              <Onigiri size={14} />
+              <T v="headline">{priceOf(dealItem.id)}</T>
+            </View>
+          </View>
+        </PressableScale>
+      )}
+
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -space.md, marginBottom: space.md }} contentContainerStyle={{ gap: space.xs, paddingHorizontal: space.md }}>
         {SLOTS.map((s) => (
           <Chip key={s.slot} label={i18n.slotLabel(s.slot)} sub={s.jp} selected={slot === s.slot} onPress={() => setSlot(s.slot)} />
@@ -100,6 +135,7 @@ export default function Shop() {
           const has = store.ownedItems.includes(item.id);
           const on = mine[item.slot] === item.id;
           const sel = previewId === item.id;
+          const deal = !has && isDeal(store, item.id);
           return (
             <PressableScale
               key={item.id}
@@ -108,9 +144,18 @@ export default function Shop() {
               style={{ width: cardW }}
               accessibilityRole="button"
               accessibilityState={{ selected: sel }}
-              accessibilityLabel={`${i18n.itemName(item.id)}, ${has ? (on ? L.equipped : L.owned) : `${item.price} onigiri`}`}
+              accessibilityLabel={
+                deal
+                  ? L.dealA11y(i18n.itemName(item.id), priceOf(item.id), item.price)
+                  : `${i18n.itemName(item.id)}, ${has ? (on ? L.equipped : L.owned) : `${item.price} onigiri`}`
+              }
             >
               <View style={[styles.item, { backgroundColor: t.surface, borderColor: sel ? t.accent : t.border, borderWidth: sel ? 2 : 1 }]}>
+                {deal && (
+                  <View style={[styles.badge, { backgroundColor: t.accent }]}>
+                    <T v="caption" color="onAccent" style={{ fontWeight: '700' }}>-{pct}%</T>
+                  </View>
+                )}
                 <ItemIcon item={item} size={56} />
                 <T v="caption" numberOfLines={2} maxScale={1.4} style={{ textAlign: 'center' }}>{i18n.itemName(item.id)}</T>
                 {has ? (
@@ -118,7 +163,8 @@ export default function Shop() {
                 ) : (
                   <View style={styles.price}>
                     <Onigiri size={12} />
-                    <T v="caption" style={{ fontWeight: '700' }}>{item.price}</T>
+                    {deal && <T v="caption" color="tertiary" style={styles.was}>{item.price}</T>}
+                    <T v="caption" color={deal ? 'accent' : undefined} style={{ fontWeight: '700' }}>{priceOf(item.id)}</T>
                   </View>
                 )}
               </View>
@@ -136,4 +182,7 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   item: { borderRadius: radius.md, padding: space.sm, alignItems: 'center', gap: 4, minHeight: 124 },
   price: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  was: { textDecorationLine: 'line-through' },
+  deal: { flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.sm, borderRadius: radius.md, borderWidth: 1.5, marginBottom: space.md },
+  badge: { position: 'absolute', top: 6, right: 6, borderRadius: radius.pill, paddingHorizontal: 6, paddingVertical: 1, zIndex: 1 },
 });
